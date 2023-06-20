@@ -16,7 +16,7 @@ A pipeline to detect SNVs and other short somatic variants. This tool can work w
  * LoFreq* and SiNVICT with its prerequisites are pre-built, more info on this in [__'Installation'__](https://github.com/nickveltmaat/SNVcaller/blob/main/README.md#installation)
 
 ## General Description
-See `S1_SNV_pipeline.png` for a flowchart of the pipeline
+See [`S1_SNV_pipeline.png`](https://github.com/nickveltmaat/CircuSNV/blob/main/S1_SNV_pipeline.png) for a flowchart of the pipeline
 This is a pipeline made to reliably generate calls for somatic mutations in Low Variant Allele Frequencies (VAF) samples in specific regions, such as NGS data from cfDNA. This is done by analyzing `.BAM` files with 4 different tools (`VarDict`, `LoFreq`, `Mutect2` & `SiNVICT`). The pipeline will output variants that are called with at least an `x` amount of tools (this can be set from 1-4). Of course, the higher the number, the lower False Positive call rate, the higher the reliability of the call, but also a higher chance of missing relevant somatic variants. 
 
 The general workflow in the pipeline is as follows: 
