@@ -22,7 +22,7 @@ This is a pipeline made to reliably generate calls for somatic mutations in Low 
 The general workflow in the pipeline is as follows: 
 
 Firstly, a panel of normals (PoN, a blacklist to filter mutations) can be generated if the argument `-P` is passed, leading to a directory containing normal/healty control samples. This is optional. To generate this, all normal samples are being analayzed with the 4 tools, in the exact same way as the tumor samples, to generate a list of personal variants / SNPs and technical artifacts. All variants found in all of the normal samples, called with at least one of the tools will be included. This blacklist will later be used as a filter.
-Ather generating the PoN, the 4 tools will run in parralel, generating raw data for each SNV caller. Every tool has `.vcf` files as output, which are then gunzipped and indexed, so they can be filtered on Read Depth (RD, `-D`), Variant Allele Frequency (VAF, `-V`) and Read Depth of Mutant allele (MRD, `-M`). Subsequently, with all `.vcf` files processed, the variants can be merged on overlapping variants, keeping the RD, VAF and MRD parameters intact. All variants called with `x` or more tools will be kept. Since the tools can call variants in different ways, sometimes a variant is part of a larger variant (MNV, multinucleotide variant). These are therefore duplicate and need to be removed, a proces that a custom python script takes care of. Next, the variants are annotated and directly after filtered based on functional effect (e.g. non-synonymous variants are kept). Finally, the remaining variants will be annotated again using [openCRAVAT](https://opencravat.org/). This is a wrapper around multiple well-known annotating tools, such as [ClinVar](https://www.ncbi.nlm.nih.gov/clinvar/), [dbSNP](https://www.ncbi.nlm.nih.gov/snp/), [COSMIC](https://cancer.sanger.ac.uk/cosmic), [gnomAD](https://gnomad.broadinstitute.org/) and many more. All annotated mutations are saved in an excel file and as `.vcf` files. 
+Ather generating the PoN, the 4 tools will run in parralel, generating raw data for each SNV caller. Every tool has `.vcf` files as output, which are then gunzipped and indexed, so they can be filtered on Read Depth (RD, `-D`), Variant Allele Frequency (VAF, `-V`) and Read Depth of Mutant allele (MRD, `-M`). Subsequently, with all `.vcf` files processed, the variants can be merged on overlapping variants, keeping the RD, VAF and MRD parameters intact ([merge_variants.py](https://github.com/nickveltmaat/CircuSNV/blob/main/merge_variants.py)). All variants called with `x` or more tools will be kept. Since the tools can call variants in different ways, sometimes a variant is part of a larger variant (MNV, multinucleotide variant). These are therefore duplicate and need to be removed, a proces that a custom python script [SNV-MNV_handling](https://github.com/nickveltmaat/CircuSNV/blob/main/SNV-MNV_handling.py) takes care of. Next, the variants are annotated and directly after filtered based on functional effect (e.g. non-synonymous variants are kept) ([post_filtering.py](https://github.com/nickveltmaat/CircuSNV/blob/main/post_filtering.py)). Finally, the remaining variants will be annotated again using [openCRAVAT](https://opencravat.org/). This is a wrapper around multiple well-known annotating tools, such as [ClinVar](https://www.ncbi.nlm.nih.gov/clinvar/), [dbSNP](https://www.ncbi.nlm.nih.gov/snp/), [COSMIC](https://cancer.sanger.ac.uk/cosmic), [gnomAD](https://gnomad.broadinstitute.org/) and many more. All annotated mutations are saved in an excel file and as `.vcf` files. 
 
 
 ## Installation
@@ -51,9 +51,18 @@ oc module ls -a -t annotator  (this generartes a list of available annotators th
 oc module install clinvar cosmic dbsnp ...  (see https://open-cravat.readthedocs.io/en/latest/1.-Installation-Instructions.html for more detailed instructions)
 deactivate
 ```
+
 **5. [Download](https://drive.google.com/drive/folders/1QBt0NdPqjQU_y-A7omxoyiPfl1DL65Xn?usp=sharing) and copy the pre-built tools to `/path/to/SNVCaller/` and unzip**
  
- `unzip ./tools.zip`
+`unzip ./tools.zip`
+ 
+**6. Adjust paths in [CircuSNV.sh](https://github.com/nickveltmaat/CircuSNV/blob/main/CircuSNV.sh)**
+ 
+```
+cd to CircuSNV installation directory
+source ../../../env/bin/activate in pythonscript() and annotate() functions
+```
+ 
 
 ## Usage
 Once all tools and pre-requisites are installed correctly, the pipeline can be called with: 
