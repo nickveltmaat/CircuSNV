@@ -80,4 +80,6 @@ Once all tools and pre-requisites are installed correctly, the pipeline can be c
 - `-Q` Base Quality:        **Int**  --> example: `18`
 - `-M` minimum Mutant Read Depth:   **Int**  --> example: `7`
 - `-F` Filter Mode:         **String**  --> `Combined` or `PerTool`
+
+
 Output will be generated in `/path/to/CircuSNV/output/name_of_.bam_file/`
