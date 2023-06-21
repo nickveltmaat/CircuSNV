@@ -168,7 +168,7 @@ samplename=$(basename $1 .bam)
 echo -e "\n\n\nProcessing sample $samplename\n" 
 mkdir ./output/$samplename
 echo "Variant calling in tumor sample..."
-#samtools index $1
+samtools index $1
 Vardict $1 "./output/$samplename/" & Mutect2 $1 "./output/$samplename/" & Lofreq $1 "./output/$samplename/" & Sinvict $1 "./output/$samplename/" ##################
 
 #Merging, Annotating & Post-filtering:
@@ -199,28 +199,6 @@ elif [ "$FilterMode" = "Combined" ]; then
   bcftools isec -p ./output/$samplename/Combined_PoN-filtered/merged_PoN-filtered -O v -n~10 ./output/$samplename/Combined_PoN-filtered/sites.vcf.gz ./PoN/BLACKLIST_combined.vcf.gz
   #Add VAF/RD/MRD data to the merged list:
   pythonscript ./merge_variants.py $samplename "Combined"
-
-elif [ "$FilterMode" = "Both" ]; then
-  ### Both PoN mode: ###
-  echo -e "\n\nPoN Filtering mode is set to 'Both': PerTool and Combined lists are PoN filtered\nFiltering per tool first..."
-  #Filter first per tool on Pon,
-  bcftools isec -p ./output/$samplename/Mutect2_PoN-filtered -O z -n~10 ./output/$samplename/*_Mutect2.vcf.gz ./PoN/PoN_Mutect2.vcf.gz
-  bcftools isec -p ./output/$samplename/LoFreq_PoN-filtered -O z -n~10 ./output/$samplename/*_LoFreq.vcf.gz ./PoN/PoN_Lofreq.vcf.gz
-  bcftools isec -p ./output/$samplename/SiNVICT_PoN-filtered -O z -n~10 ./output/$samplename/*_SiNVICT.vcf.gz ./PoN/PoN_Sinvict.vcf.gz
-  bcftools isec -p ./output/$samplename/VarDict_PoN-filtered -O z -n~10 ./output/$samplename/*_VarDict.vcf.gz ./PoN/PoN_Vardict.vcf.gz
-  #Merge pon-filtered-per-tool vcfs into one, zip and index:
-  echo -e "\nMerging PerTool filtered lists..."
-  bcftools isec -p ./output/$samplename/PerTool_PoN-filtered -O z -n +$Calls ./output/$samplename/SiNVICT_PoN-filtered/0000.vcf.gz ./output/$samplename/Mutect2_PoN-filtered/0000.vcf.gz \
-  ./output/$samplename/LoFreq_PoN-filtered/0000.vcf.gz ./output/$samplename/VarDict_PoN-filtered/0000.vcf.gz
-  #Create vcf from merged PoN filtered sites.txt
-  ./isec_to_vcf.py ./output/$samplename/PerTool_PoN-filtered/sites.txt ./output/$samplename/PerTool_PoN-filtered/sites.vcf
-  bgzip -c ./output/$samplename/PerTool_PoN-filtered/sites.vcf > ./output/$samplename/PerTool_PoN-filtered/sites.vcf.gz
-  bcftools index ./output/$samplename/PerTool_PoN-filtered/sites.vcf.gz
-  #Filter merged list with combined blacklist:
-  echo -e "\nFiltering merged list with combined PoN..."
-  bcftools isec -p ./output/$samplename/PerTool_PoN-filtered/Both_PoN-filtered -O v -n~10 ./output/$samplename/PerTool_PoN-filtered/sites.vcf.gz ./PoN/BLACKLIST_combined.vcf.gz
-  #Add VAF/RD/MRD data to the merged list:
-  pythonscript ./merge_variants.py $samplename "Both"
   
 else
   echo "$FilterMode is not a valid option for FilterMode... please provide either 'PerTool' or 'Combined'... "
@@ -284,4 +262,3 @@ fi
 ###################################################
 
 echo 'Finished run!  '
-
