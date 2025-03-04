@@ -77,9 +77,9 @@ def vcf_info_sinvict(df):
     '''
     This functions loads a Sinvict .vcf df and extracs 'RD', 'VAF' & 'MRD' data into new columns
     '''
-    df['MRD'] = df['calls_level1.sinvict'].str.split(':',2).str[2].astype(int)
-    df['RD'] = df['calls_level1.sinvict'].str.split(':',2).str[0].astype(int)
-    df['AF'] = df['calls_level1.sinvict'].str.split(':',2).str[1].astype(float)
+    df['MRD'] = df['calls_level1.sinvict'].str.split(':',4).str[2].astype(int)
+    df['RD'] = df['calls_level1.sinvict'].str.split(':',4).str[0].astype(int)
+    df['AF'] = df['calls_level1.sinvict'].str.split(':',4).str[1].astype(float)
     return df
 ########
 
@@ -99,16 +99,18 @@ elif filtermode == 'Combined':
     dfm2 = read_vcf(path + samplename + '/Combined_PoN-filtered/0001.vcf.gz')
     dflf = read_vcf(path + samplename + '/Combined_PoN-filtered/0002.vcf.gz')
     dfvd = read_vcf(path + samplename + '/Combined_PoN-filtered/0003.vcf.gz')
-elif filtermode == 'Both':
-    sites = read_sites(path + samplename + '/PerTool_PoN-filtered/Both_PoN-filtered/sites.txt') #Reads Both-PoN-filtered sites
-    sites2 = read_sites(path + samplename + '/PerTool_PoN-filtered/sites.txt') #Reads combined-unfiltered sites, to see which tools called the mutation.
-    sites['TOOLS'] = pd.merge(sites, sites2, on='loc')['TOOLS_y']  #replaces 'TOOLS column'
-    dfsv = read_vcf(path + samplename + '/PerTool_PoN-filtered/0000.vcf.gz') #reads .vcf files of merged vcfs to retreive RD, VAF & MRD info
-    dfm2 = read_vcf(path + samplename + '/PerTool_PoN-filtered/0001.vcf.gz')
-    dflf = read_vcf(path + samplename + '/PerTool_PoN-filtered/0002.vcf.gz')
-    dfvd = read_vcf(path + samplename + '/PerTool_PoN-filtered/0003.vcf.gz')   
-
-
+elif filtermode == 'phased':
+    sites = read_sites(path + samplename + '/Combined_PoN-filtered/sites.txt') #Reads unfiltered sites. 
+    dfsv = read_vcf(path + samplename + '/Combined_PoN-filtered/0000.vcf.gz') #reads .vcf files of merged vcfs to retreive RD, VAF & MRD info
+    dfm2 = read_vcf(path + samplename + '/Combined_PoN-filtered/0001.vcf.gz')
+    dflf = read_vcf(path + samplename + '/Combined_PoN-filtered/0002.vcf.gz')
+    dfvd = read_vcf(path + samplename + '/Combined_PoN-filtered/0003.vcf.gz')
+    
+    
+#Elif filtermode = non existant...
+    
+    
+    
 #Extracting RD, VAF & MRD data per tool.vcf
 dfsv = vcf_info_sinvict(dfsv).rename(columns = {'AF':'AFsv', 'RD':'RDsv', 'MRD':'MRDsv'})
 dfsv['loc'] = dfsv['CHROM'] + '_' + dfsv['POS'].astype(str) + '_' + dfsv['REF'] + '>' + dfsv['ALT']
@@ -142,5 +144,9 @@ df_merged = df_merged[['CHROM', 'POS','REF','ALT','info']]
 df_merged['chrnum'] = df_merged['CHROM'].str.extract(r'(\d+|[XY])').replace({'X': 23, 'Y': 24}).astype(int)
 df_merged = df_merged.sort_values(by=['chrnum', 'POS']).drop(columns =['chrnum'])
 
-
-df_merged.to_csv(path + samplename + '/merged_vcfs.txt', sep='\t', index = False, header= False)
+if filtermode == 'PerTool':
+  df_merged.to_csv(path + samplename + '/merged_vcfs.txt', sep='\t', index = False, header= False)
+elif filtermode == 'Combined':
+  df_merged.to_csv(path + samplename + '/merged_vcfs.txt', sep='\t', index = False, header= False)
+elif filtermode == 'phased':
+  df_merged.to_csv(path + samplename + '/merged_vcfs_phased.txt', sep='\t', index = False, header= False)
