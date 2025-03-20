@@ -73,11 +73,20 @@ oc module install clinvar cosmic dbsnp ...  (see https://open-cravat.readthedocs
 deactivate
 ```
 
-**5. [Download](https://drive.google.com/drive/folders/1QBt0NdPqjQU_y-A7omxoyiPfl1DL65Xn?usp=sharing) and copy the pre-built tools to `/path/to/SNVCaller/` and unzip**
+**5. [Download](https://drive.google.com/drive/folders/1QBt0NdPqjQU_y-A7omxoyiPfl1DL65Xn?usp=sharing) and copy the pre-built tools to `/path/to/CircuSNV/` and unzip**
  
 `unzip ./tools.zip`
+
+**5. Export paths to pre-built tools**
  
-**6. Adjust paths in [CircuSNV.sh](https://github.com/nickveltmaat/CircuSNV/blob/main/CircuSNV.sh)**
+```
+export PATH=$PATH:/path/to/CircuSNV/tools/lofreq/src/lofreq/ #Lofreq
+export PATH=$PATH:/path/to/CircuSNV/tools/lofreq/src/scripts/ #Lofreq 2?
+export PATH=$PATH:/path/to/CircuSNV/tools/sinvict/bam-readcount/build/bin/ #BamReadcount
+export PATH=$PATH:/path/to/CircuSNV/tools/sinvict/ #SiNVICT
+```
+ 
+**7. Adjust paths in [CircuSNV.sh](https://github.com/nickveltmaat/CircuSNV/blob/main/CircuSNV.sh)**
  
 ```
 cd to CircuSNV installation directory
