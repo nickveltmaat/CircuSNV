@@ -4,6 +4,7 @@
 #SBATCH --error="CircuSNV_run.err"
 #SBATCH --time=100:00:00
 #SBATCH --mem=12gb
+#SBATCH --tmp=50G
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=9
 #SBATCH --get-user-env=L60
@@ -297,16 +298,26 @@ run_tumor_sample() {
   echo -e "\n\n\nProcessing sample $samplename\n" 
   mkdir ./output/$samplename
   echo "Variant calling in tumor sample..."
+  tmpDir="./"
+  BAMIN=$1
+  if [ ! -z "$TMPDIR"]; then
+    tmpDir=$TMPDIR
+    cp $1 $tmpDir/
+    BAMIN="$tmpDir/""$(basename $1)"
+  fi
+  echo "analysing with tmpDir: $tmpDir and bamfile $BAMIN"
   (
-    module load SAMtools/1.16.1-GCCcore-11.3.0
-    samtools index $1
-  )
-  Vardict $1 "./output/$samplename/" &
-  Mutect2 $1 "./output/$samplename/" &
-  Lofreq $1 "./output/$samplename/" &
-  Sinvict $1 "./output/$samplename/" ##################
+        module load SAMtools/1.16.1-GCCcore-11.3.0
+        samtools index $BAMIN
+  ) 
+  Vardict $BAMIN "$tmpDir/output/$samplename/" &
+  Mutect2 $BAMIN "$tmpDir/output/$samplename/" &
+  Lofreq $BAMIN "$tmpDir/output/$samplename/" &
+  Sinvict $BAMIN "$tmpDir/output/$samplename/" ##################
   wait
-  
+  if [ ! -z "$TMPDIR"]; then
+    cp "$tmpDir/output/$samplename/" "./output/$samplename/"
+  fi
   # If -P is empty:
     # Don't filter on PoN, prepare list for MNV handling directly (adjust merge_variants):
     #- isec variants (similar to Combined mode, but without the PoN filtering)
