@@ -316,7 +316,7 @@ run_tumor_sample() {
   Sinvict $BAMIN "$tmpDir/output/$samplename/" ##################
   wait
   if [ ! -z "$TMPDIR"]; then
-    cp "$tmpDir/output/$samplename/" "./output/$samplename/"
+    cp -rv "$tmpDir/output/$samplename" "./output/$samplename"
   fi
   # If -P is empty:
     # Don't filter on PoN, prepare list for MNV handling directly (adjust merge_variants):
