@@ -1,5 +1,3 @@
-#! /usr/bin/python
-
 """
 This module reads a annotated (using OpenCravat) merged_variants sites.xlsx.
  
@@ -14,20 +12,26 @@ import sys
 import pandas as pd
 import os
 
-if len(sys.argv) != 2:
-  print("Usage:\t" + sys.argv[0] + "\t<samplename>")
+if len(sys.argv) != 4:
+  print("Usage:\t" + sys.argv[0] + "\t<samplename>" + "\t<outputDir>"+ "\t<UNMET filtering true/false>")
   exit(0)
 
 samplename = str(sys.argv[1])
-path = './output/'
+path = str(sys.argv[2])
+if not path.endswith('/'):
+    path += '/'
 
-
+unmet = sys.argv[3]
 
 #Load annotated variants
 annotated = pd.read_excel(path + samplename + '/merged_vcfs_annotated.xlsx', sheet_name='Variant', skiprows=1, engine='openpyxl')
-annotated['VAF'] = annotated['Tags'].str.split('AF:', 1).str[1].str.split('_').str[0].astype(float)
-annotated['DP'] = annotated['Tags'].str.split('DP:', 1).str[1].str.split('_').str[0].astype(int)
-annotated['MRD'] = annotated['Tags'].str.split('MRD:', 1).str[1].str.split(';').str[0].astype(int)
+annotated['VAF'] = annotated['Tags'].str.split('AF:').str[1].str.split('_').str[0].astype(float)
+annotated['DP'] = annotated['Tags'].str.split('DP:').str[1].str.split('_').str[0].astype(int)
+if unmet == 'true': 
+  annotated['MRD'] = annotated['Tags'].str.split('MRD:').str[1].str.split('_').str[0].astype(int)
+  annotated['UNMET'] = pd.to_numeric(annotated['Tags'].str.split('UNMET:').str[1].str.split(';').str[0], errors='coerce')
+else:
+  annotated['MRD'] = annotated['Tags'].str.split('MRD:').str[1].str.split(';').str[0].astype(int)
 
 #Initiate filter counts df
 filtereddf = pd.DataFrame(columns=['filter', 'variants_remaining'])
@@ -83,29 +87,29 @@ annotated = annotated[~((annotated['AF'] > 0.0001) | #1000G global
                 (annotated['Non-Fin Eur AF'] > 0.0001) | #GnomAD European
                 (annotated['Global AF'] > 0.0001))] #GnomAD global
 #Filter out SNPS with db VAF of > 1%
-
-
 filtereddf.loc[len(filtereddf)] = ['> 0.01% in GnoMAD3 / 1000G', len(annotated)]  
 
-#VAF < 0.5%
-#filteredvariants8 = annotated[annotated['VAF'] < 0.005].copy()
-#filteredvariants8['FilterReason'] = "VAF < 0.5%"
-#annotated = annotated[annotated['VAF'] >= 0.005]
-#filtereddf.loc[len(filtereddf)] = ['VAF < 0.5%', len(annotated)]    
-    
-#VAF < 1.0%
-#filteredvariants9 = annotated[annotated['VAF'] < 0.01].copy()
-#filteredvariants9['FilterReason'] = "VAF < 1%"
-#annotated = annotated[annotated['VAF'] >= 0.01]
-#filtereddf.loc[len(filtereddf)] = ['VAF < 1%', len(annotated)] 
-
-
-
-#Merging all filtered-out variants in one dataframe
-#filteredvariantslist = [filteredvariants1, filteredvariants2, filteredvariants3, filteredvariants4, 
-#                        filteredvariants5, filteredvariants6, filteredvariants7, filteredvariants8, filteredvariants9]    
-filteredvariantslist = [filteredvariants1, filteredvariants2, filteredvariants3, filteredvariants4, 
-                        filteredvariants5, filteredvariants6, filteredvariants7]                            
+if unmet == 'true': 
+  #REPEAT REGIONS
+  # Force Repeat Class to strings and strip spaces
+  rc = annotated['Repeat Class'].fillna('').astype(str).str.strip()
+  # Filter in one line
+  filteredvariants8 = annotated[rc != ''].copy()
+  filteredvariants8['FilterReason'] = "Repeat Region"
+  annotated = annotated[rc == ''].copy()
+  filtereddf.loc[len(filtereddf)] = ["Repeat Region", len(annotated)]
+  
+  #filteredvariants8 = annotated[annotated['Repeat Class'].notna() & (annotated['Repeat Class'].str.strip() != '')].copy()
+  #filteredvariants8['FilterReason'] = "Repeat Region"
+  #annotated = annotated[annotated['Repeat Class'].isna() | (annotated['Repeat Class'].str.strip() == '')] #Filter Repeat regions
+  #filtereddf.loc[len(filtereddf)] = ["Repeat Region", len(annotated)]
+  
+  filteredvariantslist = [filteredvariants1, filteredvariants2, filteredvariants3, filteredvariants4, 
+                          filteredvariants5, filteredvariants6, filteredvariants7, filteredvariants8]   
+else:
+  filteredvariantslist = [filteredvariants1, filteredvariants2, filteredvariants3, filteredvariants4, 
+                        filteredvariants5, filteredvariants6, filteredvariants7]   
+                     
                         
 filteredvariants = pd.concat(filteredvariantslist)
 
@@ -114,3 +118,4 @@ filtereddf.to_csv(path + samplename + '/filtering_info.txt', sep='\t', index = F
 annotated['sample'] = samplename
 annotated[['Chrom.1', 'Pos', 'Reference allele', 'Alternate allele', 'sample','Tags']].to_csv(path + samplename + '/merged_vcfs_annotated-filtered.txt', sep= '\t', index = False, header= False) #Filtered merged variants
 filteredvariants.to_excel(path + samplename + '/removed_variants.xlsx', index=False) #Filterd-out variants
+
