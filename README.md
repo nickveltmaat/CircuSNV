@@ -42,7 +42,7 @@ CircuSNV is a robust and scalable bash pipeline designed for the sensitive detec
 - UNMET filter (Optional). If `-U` is true, variants with an unmet score of > 0.93 are filtered out, by automatically downloading the [10-bp-binned UNMET scores](http://web16.kazusa.or.jp/data/hg38/hg38_genome.UNMET_bin10bp.tdf) and converting it to a bed file.
 
 #### --- OPTIONAL --- MNV calling:
-- If `-H` is set to true, MNV calling will be performed on unfiltered SNVs using an in-house developed [MNV calling algorithm](https://github.com/lasillje/MNVista). See that page for a more detailed explanation. 
+- If `-H` is set to true, MNV calling will be performed on unfiltered SNVs using an in-house developed MNV calling algorithm called [MNVista](https://github.com/lasillje/MNVista). See that page for a more detailed explanation. 
 - If `-X` is provided, baseline will be analyzed first. MNV calling in follow-up samples will then be restricted to SNVs that were previously identified as part of an MNV in the baseline.
 
 #### 4. Initial annotation & Further filtering:
@@ -64,21 +64,27 @@ output_dir(-O)/sample_id/
 └── final-list/               # annotated final variants in excel and vcf format. 
 ```
 
-See [`S1_SNV_pipeline.png`](https://github.com/nickveltmaat/CircuSNV/blob/main/S1_SNV_pipeline.png) for a rough flowchart of the pipeline.
+See the [`Pipeline flow diagram`](https://github.com/nickveltmaat/CircuSNV/blob/main/flowchart_pipeline2.drawio.png) for a rough visual representation of the pipeline.
 
 #
 ## Installation
 **1. Clone the repo**
 
-`git clone https://github.com/nickveltmaat/CircuSNV`
+```
+git clone https://github.com/nickveltmaat/CircuSNV
+```
 
 **2. Set working directory to the repo**
 
-`cd /path/to/CircuSNV`
+```
+cd /path/to/CircuSNV
+```
 
 **3. Create python virtual environment (env)**
 
-`python3 -m venv ./env`
+```
+python3 -m venv ./env
+```
 
 **4. Install required packages in env with pip3**
 
@@ -97,7 +103,9 @@ deactivate
 
 **5. [Download](https://drive.google.com/drive/folders/1QBt0NdPqjQU_y-A7omxoyiPfl1DL65Xn?usp=sharing) and copy the pre-built tools to `/path/to/CircuSNV/` and unzip**
  
-`unzip ./tools.zip`
+```
+unzip ./tools.zip
+```
 
 **5. Export paths to pre-built tools**
  
@@ -118,7 +126,9 @@ cd to CircuSNV installation directory
 #
 ## Usage
 Once all tools and pre-requisites are installed correctly, the pipeline can be called using: 
-`bash ./CircuSNV.sh -I /path/sample.bam -R homo_sapiens.fasta -L targets.bed -O ./results/ OPTIONAL_ARGUMENTS`
+```
+bash ./CircuSNV.sh -I /path/sample.bam -R homo_sapiens.fasta -L targets.bed -O ./results/ OPTIONAL_ARGUMENTS
+```
 
 By default, the script requires 12 threads and 12 GB of ram. This can be changed in the CircuSNV.sh code (hard-coded). 
 
@@ -128,16 +138,16 @@ By default, the script requires 12 threads and 12 GB of ram. This can be changed
 | `-R` | `<reference.fasta>`        | Reference genome FASTA (indexed).                                                        | **Required** |
 | `-L` | `<regions.bed>`            | BED file containing target regions.                                                      | **Required** |
 | `-V` | `<float>`                  | Minimum Variant Allele Frequency (VAF).                                                  | `0.001`   |
-| `-D` | `<int>`                    | Minimum read depth (FORMAT/DP).                                                          | `100`     |
+| `-D` | `<int>`                    | Minimum read depth.                                                                      | `100`     |
 | `-C` | `<int>`                    | Minimum number of tools calling the variant (intersection count).                        | `1`       |
-| `-P` | `<PoN directory>`          | Directory of normal BAMs for PoN generation (or pre‑made blacklist VCF).                 | *off*     |
+| `-P` | `<PoN directory>`          | Directory of normal BAMs for PoN generation (or pre‑made blacklist.txt).                 | *off*     |
 | `-Q` | `<int>`                    | Minimum base quality threshold.                                                          | `25`      |
-| `-M` | `<int>`                    | Minimum reads supporting a mutation (FORMAT/VD or AD).                                   | `3`       |
-| `-S` | `<float>`                  | Strand‑bias threshold (min fraction of forward vs. reverse reads).                       | `0.9`     |
+| `-M` | `<int>`                    | Minimum reads supporting a mutation.                                                     | `3`       |
+| `-S` | `<float>`                  | Strand‑bias threshold (min fraction of forward vs. reverse reads).                       | `0.1`     |
 | `-H` | `<true/false>`             | Enable multi‑nucleotide variant (MNV) phasing and calling.                               | `false`   |
 | `-X` | `<crosslink table.tsv>`    | TSV linking sample names, timepoints, and corresponding baselines for matched/MNV modes. | *off*     |
 | `-T` | `<true/false>`             | Matched‑control subtraction logic (requires `-X`).                                       | `false`   |
-| `-U` | `<true/false>`             | Use UNMET score filtering to exclude error‑prone regions.                                | `false`   |
+| `-U` | `<true/false>`             | Use UNMET score filtering to exclude error‑prone and repeat regions.                     | `false`   |
 | `-O` | `<output directory>`       | Main directory for all sample outputs.                                                   | `./output`|
 | `-h` |                            | Display help message and exit.                                                           |           |
 
@@ -167,19 +177,13 @@ bash CircuSNV.sh \
 
 #### Pre-made PoN example
 As mentioned, `-P` can be a pre-made `.txt` file rather than a directory. Make sure it is in the following format (no headers): 
-|      |         |     |     |
-|------|---------|-----|-----|
 | chr1 | 2556714 | A   | G   |
+|------|---------|-----|-----|
 | chr1 | 2562891 | G   | A   |
 | chr1 | 9710455 | G   | A   |
 | chr1 | 9710456 | A   | G   |
 | chr1 | 9710457 | T   | C   |
 | chr1 | 9710458 | G   | GC  |
-| chr1 | 9710459 | C   | T   |
-| chr1 | 9710460 | C   | T   |
-| chr1 | 9710463 | C   | A   |
-| chr1 | 9710463 | C   | T   |
-
 
 
 #### CrosslinkTable example
