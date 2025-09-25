@@ -61,6 +61,9 @@ Matched="false"      # use matched control logic?
 UNMET="false"        # use UNMET score filtering
 OutputDir="./output"
 
+# number of threads; define or inherit from SLURM_CPUS_PER_TASK
+THREADS=${SLURM_CPUS_PER_TASK:-12}
+
 ###  Parsing parameters  ###
 while getopts "R:L:I:V:D:C:P:Q:B:M:S:H:X:T:U:O:h:" arg; do
   case $arg in
@@ -126,7 +129,7 @@ annotate() { #1 input.txt (tab delim snv data)   #2 Output filenames    #3&#4 ou
   source "$envpath/bin/activate"
   oc run $1 \
     -l hg38 \
-    -n $2 --silent --mp 12 \
+    -n $2 --silent --mp $THREADS \
     -a cgc cadd_exome clinpred cosmic mutation_assessor thousandgenomes gnomad3 repeat \
     -t $3 $4
   deactivate 
@@ -221,7 +224,7 @@ Vardict() { #1: Input .bam file   #2 Output folder
     module load R/4.2.2-foss-2022a-bare
     load_modules
     
-    vardict-java -th 12 -r 1 -G $Reference -f 0.00000000001 -N $base_name -I 20 -L 20 -Y 20 --nosv --deldupvar -q $Qual -Q $Qual -b $1 -c 1 -S 2 -E 3 -g 4 $Listregions | \
+    vardict-java -th $THREADS -r 1 -G $Reference -f 0.00000000001 -N $base_name -I 20 -L 20 -Y 20 --nosv --deldupvar -q $Qual -Q $Qual -b $1 -c 1 -S 2 -E 3 -g 4 $Listregions | \
     teststrandbias.R | var2vcf_valid.pl -S -N $base_name -E -f 0.00000000001 > $2${base_name}_VarDict_RAW_inter.vcf
     
     bcftools filter -O v -i "(FORMAT/ALD[0:0]/FORMAT/ALD[0:1]) >= ${SB} & (FORMAT/ALD[0:0]/FORMAT/ALD[0:1]) <= ${SBU} & (INFO/ODDRATIO[0]) > 0 & INFO/PMEAN < 67" \
@@ -243,7 +246,7 @@ Mutect2() { #1: Input .bam file    #2: Output folder
     module load GATK/4.3.0.0-GCCcore-11.3.0-Java-11
     load_modules
     
-    gatk --java-options -Xmx12G Mutect2 --QUIET --verbosity ERROR --create-output-variant-index false --native-pair-hmm-threads 12 --min-base-quality-score $Qual --callable-depth 10 --minimum-allele-fraction 0.00000000001 -R $Reference -I $1 -O $2${base_name}_Mutect2_RAW.vcf -L $Listregions $3 && \
+    gatk --java-options -Xmx12G Mutect2 --QUIET --verbosity ERROR --create-output-variant-index false --native-pair-hmm-threads $THREADS --min-base-quality-score $Qual --callable-depth 10 --minimum-allele-fraction 0.00000000001 -R $Reference -I $1 -O $2${base_name}_Mutect2_RAW.vcf -L $Listregions $3 && \
     gatk FilterMutectCalls --QUIET --verbosity ERROR --create-output-variant-index false --min-allele-fraction 0.00000000001 -R $Reference -V $2${base_name}_Mutect2_RAW.vcf -O $2${base_name}_M2_Fstats1.vcf
     bcftools filter -O v -i "(FORMAT/SB[0:2]/FORMAT/SB[0:3]) >= ${SB} & (FORMAT/SB[0:2]/FORMAT/SB[0:3]) <= ${SBU}" $2${base_name}_M2_Fstats1.vcf > $2${base_name}_M2_Fstats.vcf
     
@@ -263,19 +266,51 @@ Lofreq() { #1: Input .bam file    #2: Output folder
   echo "Analyzing ${base_name} with LoFreq..."
   (
     load_modules
+    module load SAMtools/1.19.2-GCCcore-11.3.0
     
-    lofreq call-parallel --pp-threads 12 --no-default-filter --call-indels -C 10 -f $Reference -q $Qual -Q $Qual -o $2${base_name}_LoFreq_inter.vcf -l $Listregions $1 && \
-    awk '!seen[$0]++' $2${base_name}_LoFreq_inter.vcf > $2${base_name}_LoFreq_inter_RAW.vcf && \
-    
-    bcftools filter -O v -i "(INFO/DP4[2]/INFO/DP4[3]) >= ${SB} & (INFO/DP4[2]/INFO/DP4[3]) <= ${SBU}" $2${base_name}_LoFreq_inter_RAW.vcf > $2${base_name}_LoFreq_RAW.vcf
+    # create a temporary BAM of just the regions you care about
+    tmpbam=$(mktemp --suffix=.bam "$2/${base_name}_regions_XXXX")
+    samtools view -b -M -L "$Listregions" "$1" -o "$tmpbam"
+    samtools index "$tmpbam"
 
-    bgzip -c $2${base_name}_LoFreq_RAW.vcf > $2${base_name}_LoFreq_inter.vcf.gz && bcftools index $2${base_name}_LoFreq_inter.vcf.gz && cp $2${base_name}_LoFreq_inter.vcf.* $2/mnvcalling
+    # 1) run one multi-threaded LoFreq on the subset BAM
+    lofreq call-parallel \
+      --pp-threads $THREADS \
+      --no-default-filter \
+      --call-indels \
+      -C 10 \
+      -f "$Reference" \
+      -q "$Qual" -Q "$Qual" \
+      -o "$2/${base_name}_LoFreq_inter.vcf" \
+      "$tmpbam" && \
 
-    bcftools filter -O z -i "INFO/DP > ${RDP} & INFO/AF > ${VAF} & INFO/DP4[2]+INFO/DP4[3] > ${MRD}" $2${base_name}_LoFreq_inter.vcf.gz > $2${base_name}_LoFreq_inter2.vcf.gz  && \
-    process_vcf "$2${base_name}_LoFreq_inter2.vcf.gz" "$2${base_name}_LoFreq.vcf"   
-    
-    rm -rf $2${base_name}_LoFreq_inter*.*
-    echo -e "LoFreq DONE for $base_name\n"
+    # 2) dedupe
+    awk '!seen[$0]++' "$2/${base_name}_LoFreq_inter.vcf" \
+      > "$2/${base_name}_LoFreq_inter_RAW.vcf" && \
+
+    # 3) apply your DP4‐ratio filter
+    bcftools filter -O v \
+      -i "(INFO/DP4[2]/INFO/DP4[3]) >= ${SB} & (INFO/DP4[2]/INFO/DP4[3]) <= ${SBU}" \
+      "$2/${base_name}_LoFreq_inter_RAW.vcf" \
+      > "$2/${base_name}_LoFreq_RAW.vcf" && \
+
+    # 4) compress & index
+    bgzip -c "$2/${base_name}_LoFreq_RAW.vcf" \
+      > "$2/${base_name}_LoFreq_inter.vcf.gz" && \
+    bcftools index "$2/${base_name}_LoFreq_inter.vcf.gz" && \
+    cp "$2/${base_name}_LoFreq_inter.vcf."* "$2/mnvcalling" && \
+
+    # 5) final DP+AF+MRD filter
+    bcftools filter -O z \
+      -i "INFO/DP > ${RDP} & INFO/AF > ${VAF} & INFO/DP4[2]+INFO/DP4[3] > ${MRD}" \
+      "$2/${base_name}_LoFreq_inter.vcf.gz" \
+      > "$2/${base_name}_LoFreq_inter2.vcf.gz" && \
+    process_vcf "$2/${base_name}_LoFreq_inter2.vcf.gz" \
+                "$2/${base_name}_LoFreq.vcf" && \
+
+   rm -f "$tmpbam" "$tmpbam.bai"
+   rm -rf $2${base_name}_LoFreq_inter*.*
+   echo -e "LoFreq DONE for $base_name\n"
   )
 }
 
@@ -288,7 +323,7 @@ Sinvict() { #1: Input .bam file    #2: Output folder
   mkdir -p $2/${base_name}_SiNVICT_inter_bamreadcount/
   
   # Define the number of chunks for parallel processing
-  N=12
+  N=$THREADS
   
   # Split the BED file into N chunks (excluding the header lines) and add the header lines back to each chunk
   header_lines=$(grep -P "^browser|^track" $Listregions | wc -l)
@@ -454,7 +489,7 @@ mnv_calling() {
       (
         module load HTSlib/1.19.1-GCCcore-11.3.0
         ml GCC/13.3.0
-        mnvista_cmd+=" -S 2 -N 1 -B 0.0001 -P 1"
+        mnvista_cmd+=" -S 1 -N 1 -B 0.00000000001 -P 1"
         eval "$mnvista_cmd"
         echo -e "MNV process for sample $samplename DONE ...\n"
       )
@@ -466,7 +501,7 @@ mnv_calling() {
       (
         module load HTSlib/1.19.1-GCCcore-11.3.0
         ml GCC/13.3.0 
-        mnvista_cmd+=" -S 25 -N 3 -B 0.95 -P 0.025 -K true"
+        mnvista_cmd+=" -S 60 -N 3 -B 0.95 -P 0.025 -K true"
         eval "$mnvista_cmd"
         echo -e "MNV process for sample $samplename DONE ...\n"
       )
@@ -483,7 +518,7 @@ mnv_calling() {
     (
       module load HTSlib/1.19.1-GCCcore-11.3.0
       ml GCC/13.3.0
-      mnvista_cmd+=" -S 25 -N 3 -B 0.95 -P 0.025 -K true"
+      mnvista_cmd+=" -S 60 -N 3 -B 0.95 -P 0.025 -K true"
       eval "$mnvista_cmd"
       echo -e "MNV process for sample $samplename DONE ...\n"
     )
