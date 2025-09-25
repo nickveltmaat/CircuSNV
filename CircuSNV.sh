@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=CircuSNV_PTLD2
-#SBATCH --output="CircuSNV_PTLD2.out"
-#SBATCH --error="CircuSNV_PTLD2.err"
+#SBATCH --job-name=CircuSNV
+#SBATCH --output="CircuSNV.out"
+#SBATCH --error="CircuSNV.err"
 #SBATCH --time=159:59:00
 #SBATCH --mem=16gb
 #SBATCH --nodes=1
@@ -10,7 +10,14 @@
 #SBATCH --export=NONE
 
 
-###֖ Helper: print usage and exit ֖###
+
+#TODO :
+#Integrate a check on which samples have been processed (see if output file has been generated --> if so: Skip sample). This way, the pipeline can easily continue where it breaks
+# Change first annotation step: Less tools to annotate to save time. Only SNPdbs & functional effect (see post filtering steps) that are needed can be kept. 
+
+
+
+###  Helper: print usage and exit  ###
 usage() {
   cat <<EOF
 
@@ -40,21 +47,21 @@ EOF
   exit 1
 }
 
-###֖ Default (optional) parameter values ֖###
+###  Default (optional) parameter values  ###
 VAF=0.001            # minimum variant allele frequency
 RDP=100              # minimum read depth
 Calls=1              # minimum number of variant-calls
 PoN=""               # panel-of-normals path (empty = off)
 Qual="25"            # minimum base quality
 MRD="3"              # minimum reads supporting a mutation
-SB="0.1"             # strand-bias threshold
+SB="0.9"             # strand-bias threshold
 MNV="false"          # enable multi-nucleotide-variant logic?
 CrosslinkTable=""    # TSV file for crosslinking (empty = off)
 Matched="false"      # use matched control logic?
 UNMET="false"        # use UNMET score filtering
 OutputDir="./output"
 
-###֖ Parsing parameters ֖###
+###  Parsing parameters  ###
 while getopts "R:L:I:V:D:C:P:Q:B:M:S:H:X:T:U:O:h:" arg; do
   case $arg in
     R) Reference=$OPTARG;;      # "/groups/umcg-pmb/tmp01/apps/data/reference_sequences/Homo_sapiens_assembly38.fasta"
@@ -77,7 +84,7 @@ while getopts "R:L:I:V:D:C:P:Q:B:M:S:H:X:T:U:O:h:" arg; do
   esac
 done
 
-#֖ Bail out if any required flags are missing
+#֖ Bail out if any required flags are missing ֖#
 check_required_args() {
   local miss=()
   for var in Reference Listregions Inputbam; do
@@ -91,8 +98,8 @@ check_required_args() {
 
 check_required_args
 
-#֖ Initiating settings
-cd /groups/umcg-pmb/tmp02/projects/hematopathology/Nick/CircuSNV/ #CHANGE THIS
+#֖ Initiating settings ֖#
+cd /groups/umcg-pmb/tmp02/projects/hematopathology/Nick/CircuSNV/
 envpath="./env"
 SBU=$(echo "scale=2; 1 / $SB" | bc)
 
@@ -114,7 +121,7 @@ pythonscript() {
 }
 
 # Function to annotate with OpenCravat
-annotate() { #1 input.txt (tab delim snv data)   #2 Output filenames    #3 & 4 output format
+annotate() { #1 input.txt (tab delim snv data)   #2 Output filenames    #3&#4 output 
   echo -e "annotating $1 with OpenCravat..."
   source "$envpath/bin/activate"
   oc run $1 \
@@ -135,6 +142,74 @@ process_vcf() {
   bcftools index "${output_vcf}.gz"
 }
 
+# Function to filter merged_vcf.txt based on the matched control using matched_filtering.py
+matched_filter() {
+  local samp="$1"         # sample name
+  local tbl="$2"          # crosslink table
+  local curr_file="$3"    # current (cases) file
+  local ctrl_file="$4"    # control file
+  local label="$5"        # short label for logging
+  
+  echo "[$samp] $label: ctrl_file=$ctrl_file"
+  echo "[$samp] $label: curr_file=$curr_file"
+
+  if [[ -f "$ctrl_file" && -f "$curr_file" ]]; then
+    local before=$(wc -l < "$curr_file")
+    echo "[$samp] $label: variants before = $before"
+    pythonscript ./matched_filtering.py "$curr_file" "$ctrl_file" "$curr_file"
+    local after=$(wc -l < "$curr_file")
+    echo "[$samp] $label: variants after  = $after"
+  else
+    echo "[$samp] $label: skipped — missing file(s) or sample is a control"
+  fi
+}
+
+unmet_filter() {
+  local samp="$1"                             # sample name, e.g. “SAMPLE123”
+  local curr_file="$2"                        # merged_vcfs.txt for that sample
+  local bed_file="$3"                         # path to the .bed you want
+  local threshold="$4"                        # numeric cutoff, e.g. 0.93
+  local label="$5"                            # short label for logging
+  local tmp_bed_tdf="${bed_file%.bed}.tdf"
+  local out_with="${curr_file%.txt}_UNMET.txt"
+  
+
+  # 1) Make sure the UNMET.bed exists
+  if [[ ! -f "$bed_file" ]]; then
+    echo "UNMET is true and $bed_file not found — downloading + converting…"
+    wget -q "http://web16.kazusa.or.jp/data/hg38/$(basename "$tmp_bed_tdf")"
+    (
+      module load IGV
+      igvtools tdftobedgraph "$tmp_bed_tdf" "$bed_file" 2>/dev/null
+    )
+    echo "UNMET: created $bed_file"
+  fi
+
+  # 2) Attach UNMET scores
+  echo "[$samp] $label: variants before = $(wc -l < "$curr_file")"
+  (
+    module load BEDTools
+    bedtools intersect -a <(
+      awk 'BEGIN{FS=OFS="\t"} { print $1, $2, $2+1, $0 }' "$curr_file"
+    ) -b "$bed_file" -loj \
+    | awk -v OFS="\t" -v th="$threshold" '
+        {
+          sc = ($12 == "." ? "NA" : $12)
+          printf "%s\t%s\t%s\t%s\t%s_UNMET:%s\n",
+                 $4, $5, $6, $7, $8, sc
+        }' > "$out_with"
+  )
+  # 3) Filter by threshold
+  awk -F'\t' -v th="$threshold" '
+    {
+      split($5, a, "_UNMET:")
+      sc = a[2]
+      if (sc == "NA" || sc+0 < th) print
+    }
+  ' "$out_with" > "$curr_file"
+
+  echo "[$samp] $label: variants after  = $(wc -l < "$curr_file")"
+}
 
 ################################################### 
 # Functions to run each tool, filter on Read Dept, VAF and Mutant allele dept & creating .vcf file
@@ -297,25 +372,15 @@ generate_mnv_input() {
     #Merge sites with data: --> sites2.txt
     pythonscript ./merge_variants.py $samplename "phased" --infile "sites.txt" --outfile "sites2.txt" $OutputDir
     
+    #### MNV Filtering on UNMET score ###
+    if [[ "$UNMET" == "true" ]]; then
+      unmet_filter "$samplename" "$mnvpath/sites2.txt" "./hg38_genome.UNMET_bin10bp.bed" 0.90 "MNV input -- UNMET filtering"
+    fi
     
     ##### MATCHED MODE MNV FILTERING #####
     if [[ "$Matched" == "true" ]]; then
       matched_control=$(awk -F $'\t' -v s="$samplename" '$1==s{print $4}' "$CrosslinkTable")
-      ctrl_file="$OutputDir/${matched_control}/mnvcalling/sites2.txt"
-      curr_file="$mnvpath/sites2.txt"
-      #echo -e "MNV input: [$samplename] Matched filtering: ctrl_file = $ctrl_file \t curr_file = $curr_file"
-      
-      if [[ -f "$ctrl_file" && -f "$curr_file" ]]; then
-        total_before=$(wc -l < "$curr_file")
-        echo "MNV input: [$samplename] Matched filtering: variants before = $total_before"
-        
-        pythonscript ./matched_filtering.py $curr_file $ctrl_file $curr_file #ZOIETS?? zou ctrl_file moeten overwriten
-        
-        total_after=$(wc -l < "$curr_file")
-        echo "MNV input: [$samplename] Matched filtering: variants after = $total_after"
-      else
-        echo "MNV input: [$samplename] Matched filtering skipped -- missing input file(s) or sample is a control"
-      fi
+      matched_filter "$samplename" "$CrosslinkTable" "$mnvpath/sites2.txt" "$OutputDir/$matched_control/mnvcalling/sites2.txt" "MNV input -- Matched filtering"
     fi
     #### END OF MATCHED MODE MNV FILTERING ####
     
@@ -366,7 +431,10 @@ generate_mnv_input() {
 mnv_calling() {
   local samplename=$1
   local crosslink_table=$2
-
+  
+  mnvista_cmd="./MNVista $bam_file $OutputDir/$samplename/mnvcalling/sites.vcf $OutputDir/$samplename/mnvcalling/results -T 12 -M 6 -R 100 -F 0 -L 0"
+  [ -n "$PoN" ] && mnvista_cmd+=" -C './MNV_PoN_No_overlap_new.txt'"
+  
   if [ -n "$crosslink_table" ]; then
     echo "MNV input: Crosslink table provided: $crosslink_table"
     
@@ -386,10 +454,10 @@ mnv_calling() {
       (
         module load HTSlib/1.19.1-GCCcore-11.3.0
         ml GCC/13.3.0
-        ./mnv $bam_file "$OutputDir/$samplename/mnvcalling/sites.vcf" $OutputDir/$samplename/mnvcalling/results -T 12 -W 50 -M 6 -S 2 -L 2 -B 0.5 -N 1 -C "./MNV_PoN_2sample_overlap.txt" 
-        #As sensitive as possible!! (FU sample)
+        mnvista_cmd+=" -S 2 -N 1 -B 0.0001 -P 1"
+        eval "$mnvista_cmd"
         echo -e "MNV process for sample $samplename DONE ...\n"
-      ) &
+      )
     
     elif [ "$timepoint" == "baseline" ]; then
       # Sample is baseline
@@ -397,10 +465,11 @@ mnv_calling() {
       generate_mnv_input
       (
         module load HTSlib/1.19.1-GCCcore-11.3.0
-        ml GCC/13.3.0
-        ./mnv $bam_file "$OutputDir/$samplename/mnvcalling/sites.vcf" $OutputDir/$samplename/mnvcalling/results -T 12 -W 50 -M 6 -S 15 -L 4 -N 3 -B 0.8 -C "./MNV_PoN_No_overlap_new.txt"
+        ml GCC/13.3.0 
+        mnvista_cmd+=" -S 25 -N 3 -B 0.95 -P 0.025 -K true"
+        eval "$mnvista_cmd"
         echo -e "MNV process for sample $samplename DONE ...\n"
-      ) &
+      )
       
     else
       echo -e "MNV input: Crosslink table is provided but sample $samplename is not annotated as either a 'baseline' or 'follow-up' sample. \nMNV input will be generated for $samplename but not be analyzed"
@@ -414,10 +483,10 @@ mnv_calling() {
     (
       module load HTSlib/1.19.1-GCCcore-11.3.0
       ml GCC/13.3.0
-      #echo -e "\n\nbam_file: $bam_file\nvcf: $vcf\nOutputDir: $OutputDir\nsamplename: $samplename\n\n"
-      ./mnv $bam_file "$OutputDir/$samplename/mnvcalling/sites.vcf" $OutputDir/$samplename/mnvcalling/results -T 12 -W 50 -M 6 -S 15 -L 4 -N 3 -B 0.8 -C "./MNV_PoN_No_overlap_new.txt"
+      mnvista_cmd+=" -S 25 -N 3 -B 0.95 -P 0.025 -K true"
+      eval "$mnvista_cmd"
       echo -e "MNV process for sample $samplename DONE ...\n"
-    ) &
+    )
   fi
 }
 
@@ -588,68 +657,17 @@ run_tumor_sample() {
     fi
   )  
   
-  #### FILTERING BASED ON MATCHED NORMAL SAMPLE ####
-  # --- ADDED: Filter annotated results by matched control in Matched mode ---
-  if [[ "$Matched" == "true" ]]; then
-    matched_control=$(awk -F $'\t' -v s="$samplename" '$1==s{print $4}' "$CrosslinkTable")
-    ctrl_file="$OutputDir/$matched_control/intermediate-files/merged_vcfs.txt"
-    curr_file="$OutputDir/$samplename/merged_vcfs.txt"
-    echo -e "ctrl_file = $ctrl_file \ncurr_file = $curr_file"
-    if [[ -f "$ctrl_file" && -f "$curr_file" ]]; then
-      echo "[$samplename] Matched filtering: variants before = $(wc -l < ${curr_file})"
-      pythonscript ./matched_filtering.py $curr_file $ctrl_file $curr_file
-      echo "[$samplename] Matched filtering: variants after = $(wc -l < ${curr_file})"
-    else
-      echo "[$samplename] Matched filtering skipped -- missing input file(s) or sample is a control"
-    fi
-  fi
-  # -----------------------------------------------------------------------
-  #### END OF FILTERING BASED ON MATCHED NORMAL SAMPLE ####
-  
   #### Filtering on UNMET score ###
   if [[ "$UNMET" == "true" ]]; then
-  BED_UNMET="./hg38_genome.UNMET_bin10bp.bed"
-  curr_file="$OutputDir/$samplename/merged_vcfs.txt"
-    #Create UNMET .bed file if needed
-    if [[ ! -f "$BED_UNMET" ]]; then
-      echo "UNMET is true and $BED_UNMET not yet created. Creating $BED_UNMET..."
-      wget http://web16.kazusa.or.jp/data/hg38/hg38_genome.UNMET_bin10bp.tdf
-      (
-        module load IGV
-        igvtools tdftobedgraph ./hg38_genome.UNMET_bin10bp.tdf ./hg38_genome.UNMET_bin10bp.bed 2>/dev/null
-      )
-      echo "UNMET: $BED_UNMET created"
-    else
-      echo "UNMET is true and $BED_UNMET already exists. "
-    fi
-    # Attaching UNMET scores to merged_vcfs.txt
-    echo "[$samplename] UNMET filtering: variants before = $(wc -l < ${curr_file})"
-    (
-      module load BEDTools
-      bedtools intersect -a <(
-        awk 'BEGIN{FS=OFS="\t"} { print $1, $2, $2+1, $0 }' "$curr_file"
-      ) \
-        -b "$BED_UNMET" -loj \
-      | awk 'BEGIN{FS=OFS="\t"} {
-          sc = ($12 == "." ? "NA" : $12)
-          printf "%s\t%s\t%s\t%s\t%s_UNMET:%s\n",
-            $4, $5, $6, $7, $8, sc
-        }' \
-      > "${curr_file%.txt}_UNMET.txt"
-    )
-    # Filtering on UNMET > 0.93
-    awk -F'\t' '
-      {
-        split($5, a, "_UNMET:")
-        sc = a[2]
-        if (sc == "NA" || sc+0 < 0.93) print
-      }
-    ' "${curr_file%.txt}_UNMET.txt" > "$curr_file"
-    echo "[$samplename] UNMET filtering: variants after = $(wc -l < ${curr_file})"
+    unmet_filter "$samplename" "$OutputDir/$samplename/merged_vcfs.txt" "./hg38_genome.UNMET_bin10bp.bed" 0.90 "UNMET filtering"
   fi
-    
-  ### End of filtering on UNMET score ###
-    
+
+  #### FILTERING BASED ON MATCHED NORMAL SAMPLE ####
+  if [[ "$Matched" == "true" ]]; then
+    matched_control=$(awk -F $'\t' -v s="$samplename" '$1==s{print $4}' "$CrosslinkTable")
+    matched_filter "$samplename" "$CrosslinkTable" "$OutputDir/$samplename/merged_vcfs.txt" "$OutputDir/$matched_control/intermediate-files/merged_vcfs.txt" "Matched filtering"
+  fi
+
   #MNVCalling
   if [ "$MNV" == "true" ]; then
     #If phased argument is true: 
