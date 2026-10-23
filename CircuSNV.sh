@@ -45,13 +45,19 @@ for module in config args common callers filters annotate mnv pon samples; do
   source "$CIRCUSNV_HOME/lib/$module.sh"
 done
 
+# Settings: built-in defaults, then an optional config file, then the command line.
 apply_default_config
+set_default_options
+find_config_file "$@"
+load_config_file
 parse_args "$@"
-check_required_args
 normalize_args
+validate_args
 
+# Upper bound of the strand-bias window (two decimals, as before)
 SBU=$(echo "scale=2; 1 / $SB" | bc)
 
+echo -e "\nCircuSNV $(circusnv_version)\nInstallation: $CIRCUSNV_HOME\nThreads: $THREADS"
 echo -e "\nSettings: \nInput bam(s): $Inputbam\nReference: $Reference\nPanel: $Listregions\nMinimum VAF: $VAF\nMinimum Read Depth: $RDP\nMinimum Base Quality: $Qual\nMinimum Overlapping Calls: $Calls\nPoN: $PoN\nStrand Bias: $SB\nMultiNucleotide Variant Calling: $MNV\nBayesian Prior for MNV calling: $PRIOR\nCrosslink Table: $CrosslinkTable\nMatched Control Logic: $Matched\nUNMET & repeat filtering: $UNMET\nMain output directory: $OutputDir"
 
 prepare_pon
