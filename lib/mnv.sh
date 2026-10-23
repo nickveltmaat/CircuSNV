@@ -12,17 +12,17 @@ generate_mnv_input() {
     local mnvpath="$OutputDir/$samplename/mnvcalling"
 
     echo 'MNV input: normalizing, atomizing, zipping and indexing 4 inputs for MNV analysis --> merging into one list'
-    bgzip -c "$mnvpath/"*_M2_F2stats.vcf > "$mnvpath/${samplename}_M2_F2stats.vcf.gz" && bcftools index "$mnvpath/${samplename}_M2_F2stats.vcf.gz"
+    bgzip -c "$mnvpath/"*_M2_F2stats.vcf > "$mnvpath/${samplename}_M2_F2stats.vcf.gz" && bcftools index -f "$mnvpath/${samplename}_M2_F2stats.vcf.gz"
 
     bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$mnvpath/"*VarDict_inter.vcf.gz 2>/dev/null | bcftools norm -d all > "$mnvpath/VarDict_MNV.vcf" 2>/dev/null
     bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$mnvpath/"*M2_F2stats.vcf.gz 2>/dev/null | bcftools norm -d all > "$mnvpath/Mutect2_MNV.vcf" 2>/dev/null
     bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$mnvpath/"*LoFreq_inter.vcf.gz 2>/dev/null | bcftools norm -d all > "$mnvpath/LoFreq_MNV.vcf" 2>/dev/null
     bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$mnvpath/"*SiNVICT_inter_RAW.vcf.gz 2>/dev/null | bcftools norm -d all > "$mnvpath/SiNVICT_MNV.vcf" 2>/dev/null
 
-    bgzip -c "$mnvpath/VarDict_MNV.vcf" > "$mnvpath/VarDict_MNV.vcf.gz" && bcftools index "$mnvpath/VarDict_MNV.vcf.gz"
-    bgzip -c "$mnvpath/Mutect2_MNV.vcf" > "$mnvpath/Mutect2_MNV.vcf.gz" && bcftools index "$mnvpath/Mutect2_MNV.vcf.gz"
-    bgzip -c "$mnvpath/LoFreq_MNV.vcf" > "$mnvpath/LoFreq_MNV.vcf.gz" && bcftools index "$mnvpath/LoFreq_MNV.vcf.gz"
-    bgzip -c "$mnvpath/SiNVICT_MNV.vcf" > "$mnvpath/SiNVICT_MNV.vcf.gz" && bcftools index "$mnvpath/SiNVICT_MNV.vcf.gz"
+    bgzip -c "$mnvpath/VarDict_MNV.vcf" > "$mnvpath/VarDict_MNV.vcf.gz" && bcftools index -f "$mnvpath/VarDict_MNV.vcf.gz"
+    bgzip -c "$mnvpath/Mutect2_MNV.vcf" > "$mnvpath/Mutect2_MNV.vcf.gz" && bcftools index -f "$mnvpath/Mutect2_MNV.vcf.gz"
+    bgzip -c "$mnvpath/LoFreq_MNV.vcf" > "$mnvpath/LoFreq_MNV.vcf.gz" && bcftools index -f "$mnvpath/LoFreq_MNV.vcf.gz"
+    bgzip -c "$mnvpath/SiNVICT_MNV.vcf" > "$mnvpath/SiNVICT_MNV.vcf.gz" && bcftools index -f "$mnvpath/SiNVICT_MNV.vcf.gz"
 
     # isec to merge into one list (variants called by at least 1 tool)
     bcftools isec -p "$mnvpath" -O z -n +1 "$mnvpath/SiNVICT_MNV.vcf.gz" "$mnvpath/Mutect2_MNV.vcf.gz" "$mnvpath/LoFreq_MNV.vcf.gz" "$mnvpath/VarDict_MNV.vcf.gz"
@@ -36,7 +36,7 @@ generate_mnv_input() {
 
     # Convert to vcf
     pythonscript "$CIRCUSNV_HOME/scripts/isec_to_vcf.py" "$mnvpath/sites2.txt" "$mnvpath/sites.vcf" 'TRUE'
-    bgzip -c "$mnvpath/sites.vcf" > "$mnvpath/sites.vcf.gz" && bcftools index "$mnvpath/sites.vcf.gz"
+    bgzip -c "$mnvpath/sites.vcf" > "$mnvpath/sites.vcf.gz" && bcftools index -f "$mnvpath/sites.vcf.gz"
     echo "MNV input: merging 4 tools to 1 list DONE --> sites.vcf"
   )
 }

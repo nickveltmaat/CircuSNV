@@ -44,7 +44,7 @@ run_tumor_sample() {
     bcftools isec -p "$sample_dir/isec" -O z -n "+$Calls" "$sample_dir/"*_SiNVICT.vcf.gz "$sample_dir/"*_Mutect2.vcf.gz "$sample_dir/"*_LoFreq.vcf.gz "$sample_dir/"*_VarDict.vcf.gz
     # Convert to vcf, zip and index
     pythonscript "$CIRCUSNV_HOME/scripts/isec_to_vcf.py" "$sample_dir/isec/sites.txt" "$sample_dir/isec/sites.vcf" 'FALSE'
-    bgzip -c "$sample_dir/isec/sites.vcf" > "$sample_dir/isec/sites.vcf.gz" && bcftools index "$sample_dir/isec/sites.vcf.gz"
+    bgzip -c "$sample_dir/isec/sites.vcf" > "$sample_dir/isec/sites.vcf.gz" && bcftools index -f "$sample_dir/isec/sites.vcf.gz"
     # PoN filtering (or not)
     if [ -z "$PoN" ]; then
       echo -e "No PoN argument given, proceeding with intersect results..."
@@ -118,7 +118,7 @@ run_tumor_sample() {
   fi
 
   # Sort the results into subdirectories
-  mkdir "$sample_dir/raw-data/" && mkdir "$sample_dir/filtering-info/" && mkdir "$sample_dir/intermediate-files/" && mkdir "$sample_dir/final-list/"
+  mkdir -p "$sample_dir/raw-data/" "$sample_dir/filtering-info/" "$sample_dir/intermediate-files/" "$sample_dir/final-list/"
   mv "$sample_dir/filtering_info.txt" "$sample_dir/filtering-info/" && mv "$sample_dir/removed_variants.xlsx" "$sample_dir/filtering-info/"
   mv "$sample_dir/"merged* "$sample_dir/intermediate-files/" && mv "$sample_dir/"Final_list* "$sample_dir/final-list/"
 

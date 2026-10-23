@@ -12,8 +12,8 @@ process_vcf() {
   local output_vcf=$2
 
   bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$input_vcf" 2>/dev/null | bcftools norm -d all > "$output_vcf" 2>/dev/null
-  bgzip "$output_vcf"
-  bcftools index "${output_vcf}.gz"
+  bgzip -f "$output_vcf"
+  bcftools index -f "${output_vcf}.gz"
 }
 
 Vardict() { #1: Input .bam file   #2 Output folder
@@ -32,7 +32,7 @@ Vardict() { #1: Input .bam file   #2 Output folder
     bcftools filter -O v -i "(FORMAT/ALD[0:0]/FORMAT/ALD[0:1]) >= ${SB} & (FORMAT/ALD[0:0]/FORMAT/ALD[0:1]) <= ${SBU} & (INFO/ODDRATIO[0]) > 0 & INFO/PMEAN < 67" \
     "$out/${base_name}_VarDict_RAW_inter.vcf" 2>/dev/null > "$out/${base_name}_VarDict_RAW.vcf"
 
-    bgzip -c "$out/${base_name}_VarDict_RAW.vcf" > "$out/${base_name}_VarDict_inter.vcf.gz" && bcftools index "$out/${base_name}_VarDict_inter.vcf.gz" && cp "$out/${base_name}_VarDict_inter.vc"* "$out/mnvcalling"
+    bgzip -c "$out/${base_name}_VarDict_RAW.vcf" > "$out/${base_name}_VarDict_inter.vcf.gz" && bcftools index -f "$out/${base_name}_VarDict_inter.vcf.gz" && cp "$out/${base_name}_VarDict_inter.vc"* "$out/mnvcalling"
     bcftools filter -O z -i "FORMAT/DP > ${RDP} & FORMAT/AF > ${VAF} & FORMAT/VD > ${MRD}" "$out/${base_name}_VarDict_inter.vcf.gz" > "$out/${base_name}_VarDict_inter2.vcf.gz" && \
     process_vcf "$out/${base_name}_VarDict_inter2.vcf.gz" "$out/${base_name}_VarDict.vcf"
     # Only VarDict's own intermediates: the callers run in parallel in the same directory
@@ -104,7 +104,7 @@ Lofreq() { #1: Input .bam file    #2: Output folder
     # 4) compress & index
     bgzip -c "$out/${base_name}_LoFreq_RAW.vcf" \
       > "$out/${base_name}_LoFreq_inter.vcf.gz" && \
-    bcftools index "$out/${base_name}_LoFreq_inter.vcf.gz" && \
+    bcftools index -f "$out/${base_name}_LoFreq_inter.vcf.gz" && \
     cp "$out/${base_name}_LoFreq_inter.vcf."* "$out/mnvcalling" && \
 
     # 5) final DP+AF+MRD filter
@@ -182,12 +182,12 @@ Sinvict() { #1: Input .bam file    #2: Output folder
     bcftools filter -O v -i "(FORMAT/MSB[0:0]/FORMAT/MSB[0:1]) >= ${SB} & (FORMAT/MSB[0:0]/FORMAT/MSB[0:1]) <= ${SBU}" "$out/${base_name}_SiNVICT_inter_RAW1.vcf" > "$out/${base_name}_SiNVICT_RAW.vcf"
     bgzip -c "$out/${base_name}_SiNVICT_RAW.vcf" > "$out/${base_name}_SiNVICT_inter_RAW.vcf.gz"
 
-    bcftools index "$out/${base_name}_SiNVICT_inter_RAW.vcf.gz" && cp "$out/${base_name}_SiNVICT_inter_RAW.vc"* "$out/mnvcalling"
+    bcftools index -f "$out/${base_name}_SiNVICT_inter_RAW.vcf.gz" && cp "$out/${base_name}_SiNVICT_inter_RAW.vc"* "$out/mnvcalling"
 
     bcftools filter -O z -i "FORMAT/DP > ${RDP} & FORMAT/VAF > ${VAF} & FORMAT/MDP > ${MRD}" "$out/${base_name}_SiNVICT_inter_RAW.vcf.gz" > "$out/${base_name}_SiNVICT_inter3.vcf.gz" && \
     process_vcf "$out/${base_name}_SiNVICT_inter3.vcf.gz" "$out/${base_name}_SiNVICT.vcf"
 
-    rm -rf "$out/"*SiNVICT_inter* && rm -rf "$out/"*alls_level* rm -rf "$out/"*bed_chunk_*
+    rm -rf "$out/"*SiNVICT_inter* "$out/"*alls_level* "$out/"*bed_chunk_*
     echo -e "SiNVICT DONE for $base_name\n"
   )
 }

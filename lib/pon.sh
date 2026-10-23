@@ -24,7 +24,7 @@ prepare_pon() {
       samplename=$(basename "$healthycontrol" .bam)
 
       echo -e "\n\nGenerating VCF for normal control: $samplename"
-      mkdir "$PON_DIR/$samplename/"
+      mkdir -p "$PON_DIR/$samplename/"
       mkdir -p "$PON_DIR/$samplename/mnvcalling"
 
       ensure_bam_index "$healthycontrol" "$MODULE_SAMTOOLS_PON"
@@ -55,7 +55,7 @@ prepare_pon() {
       bgzip -c "$PON_DIR/PoN_Mutect2.vcf" > "$PON_DIR/PoN_Mutect2.vcf.gz" && bgzip -c "$PON_DIR/PoN_Vardict.vcf" > "$PON_DIR/PoN_Vardict.vcf.gz" && \
       bgzip -c "$PON_DIR/PoN_Lofreq.vcf" > "$PON_DIR/PoN_Lofreq.vcf.gz" && bgzip -c "$PON_DIR/PoN_Sinvict.vcf" > "$PON_DIR/PoN_Sinvict.vcf.gz"
 
-      bcftools index "$PON_DIR/PoN_Mutect2.vcf.gz" && bcftools index "$PON_DIR/PoN_Vardict.vcf.gz" && bcftools index "$PON_DIR/PoN_Lofreq.vcf.gz" && bcftools index "$PON_DIR/PoN_Sinvict.vcf.gz"
+      bcftools index -f "$PON_DIR/PoN_Mutect2.vcf.gz" && bcftools index -f "$PON_DIR/PoN_Vardict.vcf.gz" && bcftools index -f "$PON_DIR/PoN_Lofreq.vcf.gz" && bcftools index -f "$PON_DIR/PoN_Sinvict.vcf.gz"
 
       # Variants found by at least 2 tools form the combined blacklist
       bcftools isec -o "$PON_DIR/BLACKLIST_combined.txt" -O v -n +2 "$PON_DIR/PoN_Sinvict.vcf.gz" "$PON_DIR/PoN_Mutect2.vcf.gz" "$PON_DIR/PoN_Lofreq.vcf.gz" "$PON_DIR/PoN_Vardict.vcf.gz"
@@ -69,7 +69,7 @@ prepare_pon() {
     (
       load_modules
       bgzip -c "$PON_DIR/BLACKLIST_combined.vcf" > "$PON_DIR/BLACKLIST_combined.vcf.gz"
-      bcftools index "$PON_DIR/BLACKLIST_combined.vcf.gz"
+      bcftools index -f "$PON_DIR/BLACKLIST_combined.vcf.gz"
     )
     echo -e "PoN generation is finished! On to the tumor samples... \n"
 
@@ -82,7 +82,7 @@ prepare_pon() {
     (
       load_modules
       bgzip -c "$PON_DIR/BLACKLIST_combined.vcf" > "$PON_DIR/BLACKLIST_combined.vcf.gz"
-      bcftools index "$PON_DIR/BLACKLIST_combined.vcf.gz"
+      bcftools index -f "$PON_DIR/BLACKLIST_combined.vcf.gz"
     )
     echo -e "PoN preparation is finished! On to the tumor samples... \n"
 
