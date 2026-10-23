@@ -4,14 +4,14 @@
 
 # Function to load modules
 load_modules() {
-  module load zlib/1.2.12-GCCcore-11.3.0
-  module load HTSlib/1.19.1-GCCcore-11.3.0
-  module load BCFtools/1.19-GCCcore-11.3.0
+  module load $MODULE_ZLIB
+  module load $MODULE_HTSLIB
+  module load $MODULE_BCFTOOLS
 }
 
 # Function to run Python script
 pythonscript() {
-  source "$envpath/bin/activate"
+  source "$ENV_DIR/bin/activate"
   python3 "$@"
   deactivate
 }

@@ -33,7 +33,7 @@ else
       if [ ! -e "${bam_index[0]}" ]; then
         echo "BAM index file for ${samplename} not found. Creating BAM index..."
         (
-          module load SAMtools/1.16.1-GCCcore-11.3.0
+          module load $MODULE_SAMTOOLS_PON
           samtools index "$healthycontrol"
         )
       else
@@ -50,7 +50,7 @@ else
     ls $PON_DIR/*/*Mutect2.vcf.gz | sed 's/^/ /' > $PON_DIR/Mutect2-normals.dat & ls $PON_DIR/*/*VarDict.vcf.gz | sed 's/^/ /' > $PON_DIR/VarDict-normals.dat & \
     ls $PON_DIR/*/*LoFreq.vcf.gz | sed 's/^/ /' > $PON_DIR/LoFreq-normals.dat & ls $PON_DIR/*/*SiNVICT.vcf.gz | sed 's/^/ /' > $PON_DIR/SiNVICT-normals.dat
     (
-      module load BCFtools/1.19-GCCcore-11.3.0
+      module load $MODULE_BCFTOOLS
       xargs -a $PON_DIR/Mutect2-normals.dat bcftools isec -o $PON_DIR/PoN_Mutect2.txt -O v -n +1 && xargs -a $PON_DIR/VarDict-normals.dat bcftools isec -o $PON_DIR/PoN_Vardict.txt -O v -n +1 && \
       xargs -a $PON_DIR/LoFreq-normals.dat bcftools isec -o $PON_DIR/PoN_Lofreq.txt -O v -n +1 && xargs -a $PON_DIR/SiNVICT-normals.dat bcftools isec -o $PON_DIR/PoN_Sinvict.txt -O v -n +1
     )
@@ -74,7 +74,7 @@ else
       #Add mutations from each tool list (N=4) that occur in over 50% of normal samples, to BLACKLIST_combined.txt 
       # Meaning: Inspect PoN_Vardict.txt etc etc, add high-occurance mutations that are not already present in BLACKLIST_combined.txt to BLACKLIST_combined.txt and re-sort.  
       echo -e "Adding mutations to PoN that are found in 20% of normals, but only called with one tool \n$PoN \n"
-      pythonscript "$CIRCUSNV_HOME"/scripts/finish_pon.py 20 $PON_DIR/
+      pythonscript "$CIRCUSNV_HOME"/scripts/finish_pon.py $PON_MIN_NORMALS_PCT $PON_DIR/
 
       pythonscript "$CIRCUSNV_HOME"/scripts/isec_to_vcf.py $PON_DIR/BLACKLIST_combined_complete.txt $PON_DIR/BLACKLIST_combined.vcf 'FALSE' && \
       

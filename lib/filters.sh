@@ -16,9 +16,9 @@ unmet_filter() {
   # 1) Make sure the UNMET.bed exists
   if [[ ! -f "$bed_file" ]]; then
     echo "UNMET is true and $bed_file not found — downloading + converting…"
-    wget -q -O "$tmp_bed_tdf" "http://web16.kazusa.or.jp/data/hg38/$(basename "$tmp_bed_tdf")"
+    wget -q -O "$tmp_bed_tdf" "$UNMET_URL_BASE/$(basename "$tmp_bed_tdf")"
     (
-      module load IGV
+      module load $MODULE_IGV
       igvtools tdftobedgraph "$tmp_bed_tdf" "$bed_file" 2>/dev/null
     )
     echo "UNMET: created $bed_file"
@@ -27,7 +27,7 @@ unmet_filter() {
   # 2) Attach UNMET scores
   echo "[$samp] $label: variants before = $(wc -l < "$curr_file")"
   (
-    module load BEDTools
+    module load $MODULE_BEDTOOLS
     bedtools intersect -a <(
       awk 'BEGIN{FS=OFS="\t"} { print $1, $2, $2+1, $0 }' "$curr_file"
     ) -b "$bed_file" -loj \

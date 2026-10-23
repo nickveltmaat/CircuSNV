@@ -29,7 +29,7 @@ generate_mnv_input() {
     
     #### MNV Filtering on UNMET score ###
     if [[ "$UNMET" == "true" ]]; then
-      unmet_filter "$samplename" "$mnvpath/sites2.txt" "$UNMET_BED" 0.90 "MNV input -- UNMET filtering"
+      unmet_filter "$samplename" "$mnvpath/sites2.txt" "$UNMET_BED" "$UNMET_THRESHOLD" "MNV input -- UNMET filtering"
     fi  
     
     #convert to vcf
@@ -64,8 +64,8 @@ mnv_calling() {
       #fetch list of SNVs (new vcf) that make up the phased MNVs in the baseline sample (so it is pre-filtered already and dont need to look at all variants)
       cp $OutputDir/$corresponding_baseline/mnvcalling/results/results.vcf "$OutputDir/$samplename/mnvcalling/sites.vcf"
       (
-        module load HTSlib/1.19.1-GCCcore-11.3.0
-        ml GCC/13.3.0
+        module load $MODULE_HTSLIB
+        module load $MODULE_GCC_MNVISTA
         mnvista_cmd+=" -S 1 -N 1 -B 0.00000000001 -P 1"
         eval "$mnvista_cmd"
         echo -e "MNV process for sample $samplename DONE ...\n"
@@ -76,8 +76,8 @@ mnv_calling() {
       echo "MNV input: Sample $samplename is a baseline sample."
       generate_mnv_input
       (
-        module load HTSlib/1.19.1-GCCcore-11.3.0
-        ml GCC/13.3.0 
+        module load $MODULE_HTSLIB
+        module load $MODULE_GCC_MNVISTA
         mnvista_cmd+=" -S 10 -N 3 -B 0.95 -P $PRIOR -K true"
         eval "$mnvista_cmd"
         echo -e "MNV process for baseline sample $samplename DONE ...\n"
@@ -111,8 +111,8 @@ mnv_calling() {
     echo "MNV input: Crosslink table not provided. Treating sample as baseline."
     generate_mnv_input
     (
-      module load HTSlib/1.19.1-GCCcore-11.3.0
-      ml GCC/13.3.0
+      module load $MODULE_HTSLIB
+      module load $MODULE_GCC_MNVISTA
       mnvista_cmd+=" -S 10 -N 3 -B 0.95 -P $PRIOR -K true"
       eval "$mnvista_cmd"
       echo -e "MNV process for sample $samplename DONE ...\n"

@@ -19,7 +19,7 @@ Vardict() { #1: Input .bam file   #2 Output folder
   local base_name=$(basename $1 .bam)
   echo "Analyzing ${base_name} with VarDict..."
   (
-    module load R/4.2.2-foss-2022a-bare
+    module load $MODULE_R
     load_modules
     
     vardict-java -th $THREADS -r 1 -G $Reference -f 0.00000000001 -N $base_name -I 20 -L 20 -Y 20 --nosv --deldupvar -q $Qual -Q $Qual -b $1 -c 1 -S 2 -E 3 -g 4 $Listregions | \
@@ -41,10 +41,10 @@ Mutect2() { #1: Input .bam file    #2: Output folder
   local base_name=$(basename $1 .bam)
   echo "Analyzing ${base_name} with Mutect2..."
   (
-    module load GATK/4.3.0.0-GCCcore-11.3.0-Java-11
+    module load $MODULE_GATK
     load_modules
     
-    gatk --java-options -Xmx15G Mutect2 --QUIET --verbosity ERROR --create-output-variant-index false --native-pair-hmm-threads $THREADS --min-base-quality-score $Qual --callable-depth 10 --minimum-allele-fraction 0.00000000001 -R $Reference -I $1 -O $2${base_name}_Mutect2_RAW.vcf -L $Listregions $3 && \
+    gatk --java-options -Xmx$MUTECT2_JAVA_MEM Mutect2 --QUIET --verbosity ERROR --create-output-variant-index false --native-pair-hmm-threads $THREADS --min-base-quality-score $Qual --callable-depth 10 --minimum-allele-fraction 0.00000000001 -R $Reference -I $1 -O $2${base_name}_Mutect2_RAW.vcf -L $Listregions $3 && \
     gatk FilterMutectCalls --QUIET --verbosity ERROR --create-output-variant-index false --min-allele-fraction 0.00000000001 -R $Reference -V $2${base_name}_Mutect2_RAW.vcf -O $2${base_name}_M2_Fstats1.vcf
     bcftools filter -O v -i "(FORMAT/SB[0:2]/FORMAT/SB[0:3]) >= ${SB} & (FORMAT/SB[0:2]/FORMAT/SB[0:3]) <= ${SBU}" $2${base_name}_M2_Fstats1.vcf > $2${base_name}_M2_Fstats.vcf
     
@@ -64,7 +64,7 @@ Lofreq() { #1: Input .bam file    #2: Output folder
   echo "Analyzing ${base_name} with LoFreq..."
   (
     load_modules
-    module load SAMtools/1.19.2-GCCcore-11.3.0
+    module load $MODULE_SAMTOOLS
     
     # create a temporary BAM of just the regions you care about
     tmpbam=$(mktemp --suffix=.bam "$2/${base_name}_regions_XXXX")
@@ -153,12 +153,12 @@ Sinvict() { #1: Input .bam file    #2: Output folder
   
   # Run SiNVICT with the merged bam-readcount output
   (
-    module load HTSlib/1.19.1-GCCcore-11.3.0
+    module load $MODULE_HTSLIB
     sinvict -m 10 -t $2/${base_name}_SiNVICT_inter_bamreadcount/ -o $2
   )
   
   (
-    module load SAMtools/1.19.2-GCCcore-11.3.0
+    module load $MODULE_SAMTOOLS
     pythonscript "$CIRCUSNV_HOME"/scripts/sinvict_to_vcf2.py $2/calls_level1.sinvict $2${base_name}_SiNVICT_inter.vcf $Reference
   )
 

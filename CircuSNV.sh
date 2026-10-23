@@ -49,18 +49,14 @@ if [[ -z "${CIRCUSNV_HOME:-}" ]] && ! CIRCUSNV_HOME=$(locate_home); then
   exit 1
 fi
 
-for module in args common callers filters annotate mnv pon samples; do
+for module in config args common callers filters annotate mnv pon samples; do
   source "$CIRCUSNV_HOME/lib/$module.sh"
 done
 
+apply_default_config
 parse_args "$@"
 check_required_args
 
-envpath="$CIRCUSNV_HOME/env"
-PON_DIR="$CIRCUSNV_HOME/PoN"
-UNMET_BED="$CIRCUSNV_HOME/hg38_genome.UNMET_bin10bp.bed"
-MNVISTA="$CIRCUSNV_HOME/MNVista"
-MNV_PON="$CIRCUSNV_HOME/MNV_PoN_No_overlap_new.txt"
 SBU=$(echo "scale=2; 1 / $SB" | bc)
 
 echo -e "\nSettings: \nInput bam(s): $Inputbam\nReference: $Reference\nPanel: $Listregions\nMinimum VAF: $VAF\nMinimum Read Depth: $RDP\nMinimum Base Quality: $Qual\nMinimum Overlapping Calls: $Calls\nPoN: $PoN\nStrand Bias: $SB\nMultiNucleotide Variant Calling: $MNV\nBayesian Prior for MNV calling: $PRIOR\nCrosslink Table: $CrosslinkTable\nMatched Control Logic: $Matched\nUNMET & repeat filtering: $UNMET\nMain output directory: $OutputDir"

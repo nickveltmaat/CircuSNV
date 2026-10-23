@@ -18,7 +18,7 @@ run_tumor_sample() {
   if [ ! -e "${bam_index[0]}" ]; then
     echo "BAM index file for ${samplename} not found. Creating BAM index..."
     (
-      module load SAMtools/1.19.2-GCCcore-11.3.0
+      module load $MODULE_SAMTOOLS
       samtools index "$bam_file"
     )
   else
@@ -74,7 +74,7 @@ run_tumor_sample() {
   
   #### Filtering on UNMET score ###
   if [[ "$UNMET" == "true" ]]; then
-    unmet_filter "$samplename" "$OutputDir/$samplename/merged_vcfs.txt" "$UNMET_BED" 0.90 "UNMET filtering"
+    unmet_filter "$samplename" "$OutputDir/$samplename/merged_vcfs.txt" "$UNMET_BED" "$UNMET_THRESHOLD" "UNMET filtering"
   fi
 
   #MNVCalling
@@ -114,7 +114,7 @@ run_tumor_sample() {
     
       if [[ -n "$matched_control" ]]; then
         (
-          module load SAMtools/1.19.2-GCCcore-11.3.0
+          module load $MODULE_SAMTOOLS
           add_matched_control_metrics "$OutputDir/$samplename/merged_vcfs_annotated-filtered.txt" "$samplename"
         )
         annotate_input="$OutputDir/$samplename/merged_vcfs_annotated-filtered.with_control.txt"

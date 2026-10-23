@@ -5,7 +5,7 @@
 # Function to annotate with OpenCravat
 annotate() { #1 input.txt (tab delim snv data)   #2 Output filenames    #3&#4 output 
   echo -e "annotating $1 with OpenCravat..."
-  source "$envpath/bin/activate"
+  source "$ENV_DIR/bin/activate"
   oc run $1 \
     -l hg38 \
     -n $2 --silent --mp $THREADS \
