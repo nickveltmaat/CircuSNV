@@ -258,10 +258,11 @@ run_samples() {
     crosslink_sample_order
   fi
 
-  local name
+  local name status
+  local failed=() finished=()
   for bam in "${bams[@]}"; do
+    name=$(basename "$bam" .bam)
     if [[ "$RESUME" == "true" ]]; then
-      name=$(basename "$bam" .bam)
       case "$(sample_state "$name")" in
         done)
           echo "Skipping $name: finished in an earlier run (--resume)"
@@ -272,8 +273,26 @@ run_samples() {
           ;;
       esac
     fi
-    run_tumor_sample "$bam"
+    # Each sample runs in its own subshell with set -e active, so a failure stops that sample
+    # only. (It runs as a background job that is waited for: a subshell tested directly with
+    # || or if would run with set -e switched off.)
+    ( run_tumor_sample "$bam" ) &
+    status=0
+    wait "$!" || status=$?
+    if (( status != 0 )); then
+      echo "ERROR: sample $name failed (exit $status); continuing with the next sample" >&2
+      failed+=("$name")
+    else
+      finished+=("$name")
+    fi
   done
+
+  echo -e "\nSamples finished: ${#finished[@]}, failed: ${#failed[@]}"
+  if (( ${#failed[@]} )); then
+    echo "Failed samples: ${failed[*]}" >&2
+    echo "Fix the cause and run again with --resume to redo only the unfinished samples." >&2
+    return 1
+  fi
 }
 
 # Describe what a run would do, without writing anything (--dry-run).
