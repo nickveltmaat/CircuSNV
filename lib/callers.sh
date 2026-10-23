@@ -77,6 +77,8 @@ Lofreq() { #1: Input .bam file    #2: Output folder
     # Temporary BAM with only the reads in the target regions
     local tmpbam
     tmpbam=$(mktemp --suffix=.bam "$out/${base_name}_regions_XXXX")
+    # Remove the temporary BAM also when a step below fails
+    trap 'rm -f "$tmpbam" "$tmpbam.bai"' EXIT
     samtools view -b -M -L "$Listregions" "$bam" -o "$tmpbam"
     samtools index "$tmpbam"
 
