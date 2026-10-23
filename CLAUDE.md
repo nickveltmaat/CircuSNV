@@ -16,6 +16,9 @@ functionaliteit, in bash.
   - `merge_variants.py`: metrics per tool samenvoegen; modi `no_pon`, `pon`, `phased`
   - `post_filtering.py`: filteren op functioneel effect en populatie-AF
 - `matched_filtering.py` staat in de repo maar wordt niet aangeroepen.
+- De twee annotatiestappen zijn bewust: de eerste haalt de gegevens op waarop gefilterd wordt, maar
+  het filteren verliest de structuur en layout van de annotatie, dus wordt daarna opnieuw geannoteerd.
+  Dit kan later misschien beter; verwijder of combineer deze stappen niet zonder overleg met Nick.
 
 ## Draaien
 - Alleen op het HPC-cluster: vereist SLURM en `module load` (versies staan in `CircuSNV.sh`).
