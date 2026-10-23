@@ -22,7 +22,8 @@ functionaliteit, in bash.
 
 ## Draaien
 - Alleen op het HPC-cluster: vereist SLURM en `module load` (versies staan in `CircuSNV.sh`).
-  Kan niet lokaal draaien. Er is geen testsuite.
+  Kan niet lokaal draaien. Er is geen lokale testsuite; vergelijkende tests tegen de baseline
+  draait Nick op Nibbler volgens `docs/nibbler-test.md` (scripts in `tests/nibbler/`).
 - Het script doet `cd` naar een hardcoded clusterpad; relatieve paden (`./env`, `./MNVista`, `./PoN`,
   `./*.py`, `-O`) gelden ten opzichte van die map.
 - Niet in de repo: `./env`, `./MNVista`, `./MNV_PoN_No_overlap_new.txt`, de vooraf gebouwde tools
