@@ -2,18 +2,44 @@
 # Shared helpers: logging, module loading and running Python helpers in the env.
 # Sourced by CircuSNV.sh; uses its global settings.
 
+# Load one environment module. The module system and the venv activate script are not
+# written for 'set -u', so unset-variable checks are paused while they run.
+load_module() {
+  local rc=0
+  set +u
+  module load "$1" || rc=$?
+  set -u
+  if (( rc != 0 )); then
+    echo "ERROR: could not load module $1" >&2
+  fi
+  return "$rc"
+}
+
 # Load the modules most steps need (htslib, bcftools).
 load_modules() {
-  module load "$MODULE_ZLIB"
-  module load "$MODULE_HTSLIB"
-  module load "$MODULE_BCFTOOLS"
+  load_module "$MODULE_ZLIB"
+  load_module "$MODULE_HTSLIB"
+  load_module "$MODULE_BCFTOOLS"
+}
+
+activate_env() {
+  set +u
+  # shellcheck source=/dev/null
+  source "$ENV_DIR/bin/activate"
+  set -u
+}
+
+deactivate_env() {
+  set +u
+  deactivate
+  set -u
 }
 
 # Run a Python helper inside the pipeline's virtual environment.
 pythonscript() {
-  source "$ENV_DIR/bin/activate"
+  activate_env
   python3 "$@"
-  deactivate
+  deactivate_env
 }
 
 # Create the index of a BAM file if it has none (<name>.bam.bai or <name>.bai).
@@ -34,7 +60,7 @@ ensure_bam_index() {
   if [[ -z "$index" ]]; then
     echo "BAM index file for ${name} not found. Creating BAM index..."
     (
-      module load "$samtools_module"
+      load_module "$samtools_module"
       samtools index "$bam"
     )
   else

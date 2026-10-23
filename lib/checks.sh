@@ -6,6 +6,8 @@
 # Print one line per problem with modules and commands. Every group of modules is loaded in
 # its own subshell, so modules from different toolchains do not clash.
 tool_problems() {
+  # Runs in a subshell (process substitution): the module system is not written for set -u
+  set +u
   if ! type module >/dev/null 2>&1; then
     echo "the 'module' command is not available"
     return 0
@@ -43,6 +45,8 @@ tool_problems() {
 
 # Print one line per problem with the Python environment.
 env_problems() {
+  # Runs in a subshell (process substitution): the venv activate script is not written for set -u
+  set +u
   if [[ ! -f "$ENV_DIR/bin/activate" ]]; then
     echo "Python env not found: $ENV_DIR (set ENV_DIR in a --config file)"
     return 0
@@ -64,9 +68,22 @@ crosslink_problems() {
   done < <(awk -F $'\t' 'NR>1 && ($2=="baseline" || $2=="follow-up") && !seen[$1]++ {print $1}' "$CrosslinkTable")
 }
 
+# Print one line per matched-control problem (-T true). The control BAMs are looked up in the
+# input directory, as before; a missing control makes that sample fail at the read counts.
+matched_control_problems() {
+  [[ "${Matched,,}" == "true" ]] || return 0
+  local s
+  if [[ -f "$Inputbam" ]]; then
+    echo "-T true needs -I to be a directory: matched control BAMs are looked up in the input directory (see docs/known-issues.md)"
+    return 0
+  fi
+  while IFS= read -r s; do
+    [[ -f "$Inputbam/$s.bam" ]] || echo "matched control BAM not found: $Inputbam/$s.bam"
+  done < <(awk -F $'\t' 'NR>1 {gsub(/\r/,"",$4); if ($4 != "" && !seen[$4]++) print $4}' "$CrosslinkTable")
+}
+
 # Print one line per warning (problems the pipeline may survive).
 check_warnings() {
-  local s
   [[ -f "$Reference.fai" ]] || echo "reference index not found: $Reference.fai"
   [[ -f "${Reference%.*}.dict" ]] || echo "sequence dictionary for GATK not found: ${Reference%.*}.dict"
   if [[ "$MNV" == "true" && -n "$PoN" && ! -f "$MNV_PON" ]]; then
@@ -74,14 +91,6 @@ check_warnings() {
   fi
   if [[ "$UNMET" == "true" && ! -f "$UNMET_BED" ]]; then
     echo "UNMET scores not found: $UNMET_BED; they will be downloaded and converted"
-  fi
-  if [[ "${Matched,,}" == "true" && -d "$Inputbam" ]]; then
-    while IFS= read -r s; do
-      [[ -f "$Inputbam/$s.bam" ]] || echo "matched control BAM not found: $Inputbam/$s.bam (its metrics will be skipped)"
-    done < <(awk -F $'\t' 'NR>1 {gsub(/\r/,"",$4); if ($4 != "" && !seen[$4]++) print $4}' "$CrosslinkTable")
-  fi
-  if [[ "${Matched,,}" == "true" && -f "$Inputbam" ]]; then
-    echo "-T true with a single BAM: matched controls are looked up next to that BAM"
   fi
   return 0
 }
@@ -109,6 +118,7 @@ run_checks() {
   while IFS= read -r line; do [[ -n "$line" ]] && problems+=("$line"); done < <(env_problems)
   while IFS= read -r line; do [[ -n "$line" ]] && problems+=("$line"); done < <(tool_problems)
   while IFS= read -r line; do [[ -n "$line" ]] && problems+=("$line"); done < <(crosslink_problems)
+  while IFS= read -r line; do [[ -n "$line" ]] && problems+=("$line"); done < <(matched_control_problems)
   while IFS= read -r line; do [[ -n "$line" ]] && warnings+=("$line"); done < <(check_warnings)
 
   if (( ${#warnings[@]} )); then

@@ -18,7 +18,7 @@ unmet_filter() {
     echo "UNMET is true and $bed_file not found — downloading + converting…"
     wget -q -O "$tmp_bed_tdf" "$UNMET_URL_BASE/$(basename "$tmp_bed_tdf")"
     (
-      module load "$MODULE_IGV"
+      load_module "$MODULE_IGV"
       igvtools tdftobedgraph "$tmp_bed_tdf" "$bed_file" 2>/dev/null
     )
     echo "UNMET: created $bed_file"
@@ -27,7 +27,7 @@ unmet_filter() {
   # 2) Attach UNMET scores
   echo "[$samp] $label: variants before = $(wc -l < "$curr_file")"
   (
-    module load "$MODULE_BEDTOOLS"
+    load_module "$MODULE_BEDTOOLS"
     bedtools intersect -a <(
       awk 'BEGIN{FS=OFS="\t"} { print $1, $2, $2+1, $0 }' "$curr_file"
     ) -b "$bed_file" -loj \

@@ -9,7 +9,8 @@ normalize_for_mnv() {
   local output_vcf=$1
   shift
   bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$@" 2>/dev/null | bcftools norm -d all > "$output_vcf" 2>/dev/null
-  bgzip -c "$output_vcf" > "$output_vcf.gz" && bcftools index -f "$output_vcf.gz"
+  bgzip -c "$output_vcf" > "$output_vcf.gz"
+  bcftools index -f "$output_vcf.gz"
 }
 
 # Build mnvcalling/sites.vcf for one sample from the unfiltered per-tool VCFs.
@@ -22,7 +23,8 @@ generate_mnv_input() {
     local mnvpath="$OutputDir/$samplename/mnvcalling"
 
     echo 'MNV input: normalizing, atomizing, zipping and indexing 4 inputs for MNV analysis --> merging into one list'
-    bgzip -c "$mnvpath/"*_M2_F2stats.vcf > "$mnvpath/${samplename}_M2_F2stats.vcf.gz" && bcftools index -f "$mnvpath/${samplename}_M2_F2stats.vcf.gz"
+    bgzip -c "$mnvpath/"*_M2_F2stats.vcf > "$mnvpath/${samplename}_M2_F2stats.vcf.gz"
+    bcftools index -f "$mnvpath/${samplename}_M2_F2stats.vcf.gz"
 
     # The four tools are independent: normalize, compress and index them in parallel
     local pids=() pid
@@ -46,7 +48,8 @@ generate_mnv_input() {
 
     # Convert to vcf
     pythonscript "$CIRCUSNV_HOME/scripts/isec_to_vcf.py" "$mnvpath/sites2.txt" "$mnvpath/sites.vcf" 'TRUE'
-    bgzip -c "$mnvpath/sites.vcf" > "$mnvpath/sites.vcf.gz" && bcftools index -f "$mnvpath/sites.vcf.gz"
+    bgzip -c "$mnvpath/sites.vcf" > "$mnvpath/sites.vcf.gz"
+    bcftools index -f "$mnvpath/sites.vcf.gz"
     echo "MNV input: merging 4 tools to 1 list DONE --> sites.vcf"
   )
 }
@@ -81,8 +84,8 @@ mnv_calling() {
       # The SNVs that make up the phased MNVs in the baseline are the (pre-filtered) input here
       cp "$OutputDir/$corresponding_baseline/mnvcalling/results/results.vcf" "$OutputDir/$samplename/mnvcalling/sites.vcf"
       (
-        module load "$MODULE_HTSLIB"
-        module load "$MODULE_GCC_MNVISTA"
+        load_module "$MODULE_HTSLIB"
+        load_module "$MODULE_GCC_MNVISTA"
         "$MNVISTA" "${mnvista_args[@]}" -S 1 -N 1 -B 0.00000000001 -P 1
         echo -e "MNV process for sample $samplename DONE ...\n"
       )
@@ -91,8 +94,8 @@ mnv_calling() {
       echo "MNV input: Sample $samplename is a baseline sample."
       generate_mnv_input "$samplename"
       (
-        module load "$MODULE_HTSLIB"
-        module load "$MODULE_GCC_MNVISTA"
+        load_module "$MODULE_HTSLIB"
+        load_module "$MODULE_GCC_MNVISTA"
         "$MNVISTA" "${mnvista_args[@]}" -S 10 -N 3 -B 0.95 -P "$PRIOR" -K true
         echo -e "MNV process for baseline sample $samplename DONE ...\n"
 
@@ -126,8 +129,8 @@ mnv_calling() {
     echo "MNV input: Crosslink table not provided. Treating sample as baseline."
     generate_mnv_input "$samplename"
     (
-      module load "$MODULE_HTSLIB"
-      module load "$MODULE_GCC_MNVISTA"
+      load_module "$MODULE_HTSLIB"
+      load_module "$MODULE_GCC_MNVISTA"
       "$MNVISTA" "${mnvista_args[@]}" -S 10 -N 3 -B 0.95 -P "$PRIOR" -K true
       echo -e "MNV process for sample $samplename DONE ...\n"
     )

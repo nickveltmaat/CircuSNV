@@ -9,6 +9,9 @@
 #SBATCH --get-user-env
 #SBATCH --export=NONE
 
+# Stop on errors, on unset variables and on failures inside pipelines.
+set -euo pipefail
+
 # Initiating settings #
 # Locate the installation directory: helper scripts, the Python env, MNVista and resources live
 # there. Under sbatch this script runs from a spool copy, so fall back to the submitted path.

@@ -41,21 +41,27 @@ prepare_pon() {
     ls "$PON_DIR/"*/*LoFreq.vcf.gz | sed 's/^/ /' > "$PON_DIR/LoFreq-normals.dat"
     ls "$PON_DIR/"*/*SiNVICT.vcf.gz | sed 's/^/ /' > "$PON_DIR/SiNVICT-normals.dat"
     (
-      module load "$MODULE_BCFTOOLS"
-      xargs -a "$PON_DIR/Mutect2-normals.dat" bcftools isec -o "$PON_DIR/PoN_Mutect2.txt" -O v -n +1 && xargs -a "$PON_DIR/VarDict-normals.dat" bcftools isec -o "$PON_DIR/PoN_Vardict.txt" -O v -n +1 && \
-      xargs -a "$PON_DIR/LoFreq-normals.dat" bcftools isec -o "$PON_DIR/PoN_Lofreq.txt" -O v -n +1 && xargs -a "$PON_DIR/SiNVICT-normals.dat" bcftools isec -o "$PON_DIR/PoN_Sinvict.txt" -O v -n +1
+      load_module "$MODULE_BCFTOOLS"
+      xargs -a "$PON_DIR/Mutect2-normals.dat" bcftools isec -o "$PON_DIR/PoN_Mutect2.txt" -O v -n +1
+      xargs -a "$PON_DIR/VarDict-normals.dat" bcftools isec -o "$PON_DIR/PoN_Vardict.txt" -O v -n +1
+      xargs -a "$PON_DIR/LoFreq-normals.dat" bcftools isec -o "$PON_DIR/PoN_Lofreq.txt" -O v -n +1
+      xargs -a "$PON_DIR/SiNVICT-normals.dat" bcftools isec -o "$PON_DIR/PoN_Sinvict.txt" -O v -n +1
     )
 
-    pythonscript "$CIRCUSNV_HOME/scripts/isec_to_vcf.py" "$PON_DIR/PoN_Mutect2.txt" "$PON_DIR/PoN_Mutect2.vcf" 'FALSE' && pythonscript "$CIRCUSNV_HOME/scripts/isec_to_vcf.py" "$PON_DIR/PoN_Vardict.txt" "$PON_DIR/PoN_Vardict.vcf" 'FALSE' && \
-    pythonscript "$CIRCUSNV_HOME/scripts/isec_to_vcf.py" "$PON_DIR/PoN_Lofreq.txt" "$PON_DIR/PoN_Lofreq.vcf" 'FALSE' && pythonscript "$CIRCUSNV_HOME/scripts/isec_to_vcf.py" "$PON_DIR/PoN_Sinvict.txt" "$PON_DIR/PoN_Sinvict.vcf" 'FALSE'
+    local tool
+    for tool in Mutect2 Vardict Lofreq Sinvict; do
+      pythonscript "$CIRCUSNV_HOME/scripts/isec_to_vcf.py" "$PON_DIR/PoN_$tool.txt" "$PON_DIR/PoN_$tool.vcf" 'FALSE'
+    done
 
     (
       # Compress and index the per-tool blacklists
       load_modules
-      bgzip -c "$PON_DIR/PoN_Mutect2.vcf" > "$PON_DIR/PoN_Mutect2.vcf.gz" && bgzip -c "$PON_DIR/PoN_Vardict.vcf" > "$PON_DIR/PoN_Vardict.vcf.gz" && \
-      bgzip -c "$PON_DIR/PoN_Lofreq.vcf" > "$PON_DIR/PoN_Lofreq.vcf.gz" && bgzip -c "$PON_DIR/PoN_Sinvict.vcf" > "$PON_DIR/PoN_Sinvict.vcf.gz"
-
-      bcftools index -f "$PON_DIR/PoN_Mutect2.vcf.gz" && bcftools index -f "$PON_DIR/PoN_Vardict.vcf.gz" && bcftools index -f "$PON_DIR/PoN_Lofreq.vcf.gz" && bcftools index -f "$PON_DIR/PoN_Sinvict.vcf.gz"
+      for tool in Mutect2 Vardict Lofreq Sinvict; do
+        bgzip -c "$PON_DIR/PoN_$tool.vcf" > "$PON_DIR/PoN_$tool.vcf.gz"
+      done
+      for tool in Mutect2 Vardict Lofreq Sinvict; do
+        bcftools index -f "$PON_DIR/PoN_$tool.vcf.gz"
+      done
 
       # Variants found by at least 2 tools form the combined blacklist
       bcftools isec -o "$PON_DIR/BLACKLIST_combined.txt" -O v -n +2 "$PON_DIR/PoN_Sinvict.vcf.gz" "$PON_DIR/PoN_Mutect2.vcf.gz" "$PON_DIR/PoN_Lofreq.vcf.gz" "$PON_DIR/PoN_Vardict.vcf.gz"
@@ -65,7 +71,7 @@ prepare_pon() {
     echo -e "Adding mutations to PoN that are found in ${PON_MIN_NORMALS_PCT}% of normals, but only called with one tool \n$PoN \n"
     pythonscript "$CIRCUSNV_HOME/scripts/finish_pon.py" "$PON_MIN_NORMALS_PCT" "$PON_DIR/"
 
-    pythonscript "$CIRCUSNV_HOME/scripts/isec_to_vcf.py" "$PON_DIR/BLACKLIST_combined_complete.txt" "$PON_DIR/BLACKLIST_combined.vcf" 'FALSE' && \
+    pythonscript "$CIRCUSNV_HOME/scripts/isec_to_vcf.py" "$PON_DIR/BLACKLIST_combined_complete.txt" "$PON_DIR/BLACKLIST_combined.vcf" 'FALSE'
     (
       load_modules
       bgzip -c "$PON_DIR/BLACKLIST_combined.vcf" > "$PON_DIR/BLACKLIST_combined.vcf.gz"
@@ -78,7 +84,7 @@ prepare_pon() {
     echo -e "PoN is given as pre-made blacklist: \n$PoN \n"
     cp "$PoN" "$PON_DIR/BLACKLIST_combined_complete.txt"
 
-    pythonscript "$CIRCUSNV_HOME/scripts/isec_to_vcf.py" "$PON_DIR/BLACKLIST_combined_complete.txt" "$PON_DIR/BLACKLIST_combined.vcf" 'FALSE' && \
+    pythonscript "$CIRCUSNV_HOME/scripts/isec_to_vcf.py" "$PON_DIR/BLACKLIST_combined_complete.txt" "$PON_DIR/BLACKLIST_combined.vcf" 'FALSE'
     (
       load_modules
       bgzip -c "$PON_DIR/BLACKLIST_combined.vcf" > "$PON_DIR/BLACKLIST_combined.vcf.gz"

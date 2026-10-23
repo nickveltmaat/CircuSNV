@@ -28,10 +28,11 @@ run_tumor_sample() {
   run_caller_with_retries Sinvict "$bam_file" "$sample_dir/" 3 10 & pid_sinvict=$!
 
   # Wait for all to finish and capture exit statuses
-  wait "$pid_vardict"; status_vardict=$?
-  wait "$pid_mutect2"; status_mutect2=$?
-  wait "$pid_lofreq"; status_lofreq=$?
-  wait "$pid_sinvict"; status_sinvict=$?
+  # ('wait' returns the job's exit status; capture it instead of letting set -e stop here)
+  status_vardict=0; wait "$pid_vardict" || status_vardict=$?
+  status_mutect2=0; wait "$pid_mutect2" || status_mutect2=$?
+  status_lofreq=0; wait "$pid_lofreq" || status_lofreq=$?
+  status_sinvict=0; wait "$pid_sinvict" || status_sinvict=$?
 
   echo "Vardict: $status_vardict, Mutect2: $status_mutect2, LoFreq: $status_lofreq, SiNVICT: $status_sinvict"
 
@@ -44,7 +45,8 @@ run_tumor_sample() {
     bcftools isec -p "$sample_dir/isec" -O z -n "+$Calls" "$sample_dir/"*_SiNVICT.vcf.gz "$sample_dir/"*_Mutect2.vcf.gz "$sample_dir/"*_LoFreq.vcf.gz "$sample_dir/"*_VarDict.vcf.gz
     # Convert to vcf, zip and index
     pythonscript "$CIRCUSNV_HOME/scripts/isec_to_vcf.py" "$sample_dir/isec/sites.txt" "$sample_dir/isec/sites.vcf" 'FALSE'
-    bgzip -c "$sample_dir/isec/sites.vcf" > "$sample_dir/isec/sites.vcf.gz" && bcftools index -f "$sample_dir/isec/sites.vcf.gz"
+    bgzip -c "$sample_dir/isec/sites.vcf" > "$sample_dir/isec/sites.vcf.gz"
+    bcftools index -f "$sample_dir/isec/sites.vcf.gz"
     # PoN filtering (or not)
     if [ -z "$PoN" ]; then
       echo -e "No PoN argument given, proceeding with intersect results..."
@@ -102,7 +104,7 @@ run_tumor_sample() {
 
       if [[ -n "$matched_control" ]]; then
         (
-          module load "$MODULE_SAMTOOLS"
+          load_module "$MODULE_SAMTOOLS"
           add_matched_control_metrics "$sample_dir/merged_vcfs_annotated-filtered.txt" "$samplename"
         )
         annotate_input="$sample_dir/merged_vcfs_annotated-filtered.with_control.txt"
@@ -119,8 +121,13 @@ run_tumor_sample() {
 
   # Sort the results into subdirectories
   mkdir -p "$sample_dir/raw-data/" "$sample_dir/filtering-info/" "$sample_dir/intermediate-files/" "$sample_dir/final-list/"
-  mv "$sample_dir/filtering_info.txt" "$sample_dir/filtering-info/" && mv "$sample_dir/removed_variants.xlsx" "$sample_dir/filtering-info/"
-  mv "$sample_dir/"merged* "$sample_dir/intermediate-files/" && mv "$sample_dir/"Final_list* "$sample_dir/final-list/"
+  mv "$sample_dir/filtering_info.txt" "$sample_dir/filtering-info/"
+  mv "$sample_dir/removed_variants.xlsx" "$sample_dir/filtering-info/"
+  mv "$sample_dir/"merged* "$sample_dir/intermediate-files/"
+  # No final list exists when post-filtering left no mutations
+  if compgen -G "$sample_dir/Final_list*" >/dev/null; then
+    mv "$sample_dir/"Final_list* "$sample_dir/final-list/"
+  fi
 
   if [[ "$CLEANUP" == "true" ]]; then
     cleanup_sample_intermediates "$sample_dir"
@@ -283,7 +290,7 @@ print_run_plan() {
 
   echo -e "\nSamples (${#bams[@]}), in processing order:"
   local name state note
-  for bam in "${bams[@]}"; do
+  for bam in ${bams[@]+"${bams[@]}"}; do
     n=$((n + 1))
     name=$(basename "$bam" .bam)
     state=$(sample_state "$name")

@@ -23,7 +23,7 @@ Vardict() { #1: Input .bam file   #2 Output folder
   base_name=$(basename "$bam" .bam)
   echo "Analyzing ${base_name} with VarDict..."
   (
-    module load "$MODULE_R"
+    load_module "$MODULE_R"
     load_modules
 
     vardict-java -th "$THREADS" -r 1 -G "$Reference" -f 0.00000000001 -N "$base_name" -I 20 -L 20 -Y 20 --nosv --deldupvar -q "$Qual" -Q "$Qual" -b "$bam" -c 1 -S 2 -E 3 -g 4 "$Listregions" | \
@@ -48,7 +48,7 @@ Mutect2() { #1: Input .bam file    #2: Output folder
   base_name=$(basename "$bam" .bam)
   echo "Analyzing ${base_name} with Mutect2..."
   (
-    module load "$MODULE_GATK"
+    load_module "$MODULE_GATK"
     load_modules
 
     gatk --java-options "-Xmx$MUTECT2_JAVA_MEM" Mutect2 --QUIET --verbosity ERROR --create-output-variant-index false --native-pair-hmm-threads "$THREADS" --min-base-quality-score "$Qual" --callable-depth 10 --minimum-allele-fraction 0.00000000001 -R "$Reference" -I "$bam" -O "$out/${base_name}_Mutect2_RAW.vcf" -L "$Listregions" && \
@@ -72,7 +72,7 @@ Lofreq() { #1: Input .bam file    #2: Output folder
   echo "Analyzing ${base_name} with LoFreq..."
   (
     load_modules
-    module load "$MODULE_SAMTOOLS"
+    load_module "$MODULE_SAMTOOLS"
 
     # Temporary BAM with only the reads in the target regions
     local tmpbam
@@ -146,11 +146,13 @@ Sinvict() { #1: Input .bam file    #2: Output folder
   local N=$THREADS
 
   # Split the BED file into N chunks (excluding the header lines) and add the header lines back to each chunk
-  header_lines=$(grep -P "^browser|^track" "$Listregions" | wc -l)
+  # (grep exits 1 when the BED has no header lines; that is not an error)
+  header_lines=$( { grep -P "^browser|^track" "$Listregions" || true; } | wc -l)
   tail -n +$((header_lines + 1)) "$Listregions" | split -l $((($(wc -l < "$Listregions") - header_lines) / N + 1)) -d -a 2 --additional-suffix=.bed - "$out/bed_chunk_"
 
   for chunk_file in "$out/bed_chunk_"*.bed; do
-    (grep -P "^browser|^track" "$Listregions"; cat "$chunk_file") > "${chunk_file}.tmp" && mv "${chunk_file}.tmp" "$chunk_file"
+    { grep -P "^browser|^track" "$Listregions" || true; cat "$chunk_file"; } > "${chunk_file}.tmp"
+    mv "${chunk_file}.tmp" "$chunk_file"
   done
 
   # Run bam-readcount in parallel using background jobs
@@ -168,12 +170,12 @@ Sinvict() { #1: Input .bam file    #2: Output folder
   # Run SiNVICT on the bam-readcount directory. The trailing slashes on -t and -o are kept
   # exactly as before, because SiNVICT builds its file paths from these strings.
   (
-    module load "$MODULE_HTSLIB"
+    load_module "$MODULE_HTSLIB"
     sinvict -m 10 -t "$readcount_dir/" -o "$out/"
   )
 
   (
-    module load "$MODULE_SAMTOOLS"
+    load_module "$MODULE_SAMTOOLS"
     pythonscript "$CIRCUSNV_HOME/scripts/sinvict_to_vcf2.py" "$out/calls_level1.sinvict" "$out/${base_name}_SiNVICT_inter.vcf" "$Reference"
   )
 

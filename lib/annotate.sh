@@ -9,13 +9,13 @@ annotate() {
   local name=$2
   shift 2
   echo -e "annotating $input with OpenCravat..."
-  source "$ENV_DIR/bin/activate"
+  activate_env
   oc run "$input" \
     -l hg38 \
     -n "$name" --silent --mp "$THREADS" \
     -a cgc cadd_exome clinpred cosmic mutation_assessor thousandgenomes gnomad3 repeat \
     -t "$@"
-  deactivate
+  deactivate_env
 }
 
 # Function to add reads info from matched control to each mutation found in tumor sample 
