@@ -12,7 +12,7 @@ import sys
 
 if len(sys.argv) != 4: #Changed
   print("Usage:\t" + sys.argv[0] + "\t<path/to/input_file>\t<path/to/output_filename>" + "\t<path/to/input_file>\t<path/to/output_filename>" + 'Parse Info (TRUE/FALSE)') #Changed
-  exit(0)
+  sys.exit(1)
 
 outfile = open(sys.argv[2], "w")
 outfile.write("##fileformat=VCFv4.3\n")

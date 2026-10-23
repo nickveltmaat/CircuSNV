@@ -14,7 +14,7 @@ import os
 
 if len(sys.argv) != 4:
   print("Usage:\t" + sys.argv[0] + "\t<samplename>" + "\t<outputDir>"+ "\t<UNMET filtering true/false>")
-  exit(0)
+  sys.exit(1)
 
 samplename = str(sys.argv[1])
 path = str(sys.argv[2])

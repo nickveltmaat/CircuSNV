@@ -15,7 +15,7 @@ import numpy as np
 
 if len(sys.argv) != 3: #Changed
   print("Usage:\t" + sys.argv[0] + "\t minimal percentage of normal samples that should contain a mutation to be added to PoN, that were only found using 1 tool" + "\t<path/to/PoN/directory>") #Changed
-  exit(0)
+  sys.exit(1)
   
 percentage = int(sys.argv[1])
 path = str(sys.argv[2])

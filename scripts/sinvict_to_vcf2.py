@@ -12,7 +12,7 @@ import sys
 import subprocess
 if len(sys.argv) != 4:
   print("Usage:\t" + sys.argv[0] + "\t<input_file>\t<output_filename>\t<reference_fasta>")
-  exit(0)
+  sys.exit(1)
 
 #for i in range(len(sys.argv)):
 #  print('Sys.argv ', i , ' is ', sys.argv[i])
