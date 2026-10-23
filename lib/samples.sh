@@ -6,11 +6,9 @@
 # Usage: run_tumor_sample <sample.bam>
 run_tumor_sample() {
   local bam_file=$1
-  local samplename bam_dir sample_dir
+  local samplename sample_dir
   samplename=$(basename "$bam_file" .bam)
-  bam_dir=$(dirname "$bam_file")
   sample_dir="$OutputDir/$samplename"
-  local bam_index=("${bam_dir}/${samplename}"*.bai)
   local pid_vardict pid_mutect2 pid_lofreq pid_sinvict
   local status_vardict status_mutect2 status_lofreq status_sinvict
   local MUTS matched_control annotate_input
@@ -19,17 +17,7 @@ run_tumor_sample() {
   mkdir -p "$sample_dir"
   mkdir -p "$sample_dir/mnvcalling"
 
-  # Create the BAM index if it does not exist
-  if [ ! -e "${bam_index[0]}" ]; then
-    echo "BAM index file for ${samplename} not found. Creating BAM index..."
-    (
-      module load "$MODULE_SAMTOOLS"
-      samtools index "$bam_file"
-    )
-  else
-    echo "BAM index file for ${samplename} already exists: ${bam_index[0]}"
-    touch "${bam_index[0]}"
-  fi
+  ensure_bam_index "$bam_file" "$MODULE_SAMTOOLS"
 
   echo "Variant calling in tumor sample..."
 

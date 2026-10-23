@@ -5,8 +5,7 @@
 # The result is $PON_DIR/BLACKLIST_combined.vcf.gz, used to filter the tumor samples.
 
 prepare_pon() {
-  local healthycontrol samplename bam_dir
-  local bam_index=()
+  local healthycontrol samplename
 
   if [ -z "$PoN" ]; then
     echo -e "\nNo PoN argument given\n"
@@ -23,24 +22,12 @@ prepare_pon() {
     for healthycontrol in "$PoN"/*.bam
     do
       samplename=$(basename "$healthycontrol" .bam)
-      bam_dir=$(dirname "$healthycontrol")
-      bam_index=("${bam_dir}/${samplename}"*.bai)
 
       echo -e "\n\nGenerating VCF for normal control: $samplename"
       mkdir "$PON_DIR/$samplename/"
       mkdir -p "$PON_DIR/$samplename/mnvcalling"
 
-      # Create the BAM index if it does not exist
-      if [ ! -e "${bam_index[0]}" ]; then
-        echo "BAM index file for ${samplename} not found. Creating BAM index..."
-        (
-          module load "$MODULE_SAMTOOLS_PON"
-          samtools index "$healthycontrol"
-        )
-      else
-        echo "BAM index file for ${samplename} already exists: ${bam_index[0]}"
-        touch "${bam_index[0]}"
-      fi
+      ensure_bam_index "$healthycontrol" "$MODULE_SAMTOOLS_PON"
 
       Vardict "$healthycontrol" "$PON_DIR/$samplename/" & Mutect2 "$healthycontrol" "$PON_DIR/$samplename/" & Lofreq "$healthycontrol" "$PON_DIR/$samplename/" & Sinvict "$healthycontrol" "$PON_DIR/$samplename/"
       wait

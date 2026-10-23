@@ -16,6 +16,34 @@ pythonscript() {
   deactivate
 }
 
+# Create the index of a BAM file if it has none (<name>.bam.bai or <name>.bai).
+# Usage: ensure_bam_index <file.bam> <samtools module>
+ensure_bam_index() {
+  local bam=$1
+  local samtools_module=$2
+  local name index candidate
+  name=$(basename "$bam" .bam)
+  index=""
+  for candidate in "${bam}.bai" "$(dirname "$bam")/${name}.bai"; do
+    if [[ -e "$candidate" ]]; then
+      index=$candidate
+      break
+    fi
+  done
+
+  if [[ -z "$index" ]]; then
+    echo "BAM index file for ${name} not found. Creating BAM index..."
+    (
+      module load "$samtools_module"
+      samtools index "$bam"
+    )
+  else
+    echo "BAM index file for ${name} already exists: ${index}"
+    # Make the index newer than the BAM, so tools do not warn about an outdated index
+    touch "$index"
+  fi
+}
+
 # Print a step heading. The run log puts a timestamp in front of every output line.
 log() {
   echo "== $* =="
