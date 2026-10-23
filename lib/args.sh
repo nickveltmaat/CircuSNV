@@ -22,6 +22,7 @@ set_default_options() {
   Listregions=""
   Inputbam=""
   CONFIG_FILE=""
+  SKIP_CHECKS="false"
   # Number of threads: from SLURM_CPUS_PER_TASK when running under Slurm
   THREADS=${SLURM_CPUS_PER_TASK:-12}
 }
@@ -72,7 +73,8 @@ Run:
   -O, --output DIR             main output directory                   (default: $OutputDir)
       --threads INT            threads per tool (default: SLURM_CPUS_PER_TASK, else 12)
       --config FILE            settings file, see config/circusnv.example.conf
-  -h, --help                   show this help and exit
+      --skip-checks            do not check inputs, modules and tools before starting
+  -h, --help                  show this help and exit
       --version                show the version and exit
 
 Relative paths are taken from the directory the pipeline is started from.
@@ -128,6 +130,7 @@ parse_args() {
     case "$opt" in
       -h|--help) print_help; exit 0;;
       --version) echo "CircuSNV $(circusnv_version)"; exit 0;;
+      --skip-checks) SKIP_CHECKS="true"; shift; continue;;
       -I|--input|-R|--reference|-L|--regions|-V|--min-vaf|-D|--min-depth|-C|--min-callers|\
       -P|--pon|-Q|--min-base-quality|-M|--min-alt-reads|-S|--strand-bias|-H|--mnv|\
       -B|--mnv-prior|-X|--crosslink-table|-T|--matched-control|-U|--unmet|-O|--output|\

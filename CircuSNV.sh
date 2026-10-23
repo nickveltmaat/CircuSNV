@@ -41,7 +41,7 @@ if [[ -z "${CIRCUSNV_HOME:-}" ]] && ! CIRCUSNV_HOME=$(locate_home); then
   exit 1
 fi
 
-for module in config args common callers filters annotate mnv pon samples; do
+for module in config args common checks callers filters annotate mnv pon samples; do
   source "$CIRCUSNV_HOME/lib/$module.sh"
 done
 
@@ -56,6 +56,10 @@ validate_args
 
 # Upper bound of the strand-bias window (two decimals, as before)
 SBU=$(echo "scale=2; 1 / $SB" | bc)
+
+if [[ "$SKIP_CHECKS" != "true" ]]; then
+  run_checks
+fi
 
 mkdir -p "$OutputDir"
 start_run_log
