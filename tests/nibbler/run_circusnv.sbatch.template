@@ -1,0 +1,84 @@
+#!/bin/bash
+# Template for one CircuSNV test run on Nibbler. See docs/nibbler-test.md.
+#
+# Copy this file, replace every <placeholder> in the #SBATCH lines (sbatch does not
+# expand variables there), create the logs directory, then submit:
+#
+#   sbatch run_circusnv.sbatch <circusnv_dir> <output_dir> <CircuSNV options without -O>
+#
+#   circusnv_dir  checkout (or git worktree) of the CircuSNV version to run
+#   output_dir    absolute path of a new, empty output directory for this run
+#
+# Nibbler rules: the working directory, --output and --error must be under the
+# group's /groups/<group>/tmp*/ area. Memory and CPUs below match the #SBATCH header
+# of CircuSNV.sh; the pipeline uses SLURM_CPUS_PER_TASK as its thread count.
+#
+#SBATCH --job-name=circusnv-test
+#SBATCH --chdir=/groups/<group>/<tmp>/<test_dir>
+#SBATCH --output=/groups/<group>/<tmp>/<test_dir>/logs/%x_%j.out
+#SBATCH --error=/groups/<group>/<tmp>/<test_dir>/logs/%x_%j.err
+#SBATCH --time=<hh:mm:ss>
+#SBATCH --mem=16gb
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=16
+#SBATCH --export=NONE
+#SBATCH --get-user-env
+
+set -euo pipefail
+
+usage() {
+  echo "Usage: sbatch $0 <circusnv_dir> <output_dir> <CircuSNV options without -O>" >&2
+  exit 2
+}
+
+[[ $# -ge 2 ]] || usage
+circusnv_dir=$1
+output_dir=$2
+shift 2
+
+for arg in "$@"; do
+  if [[ "$arg" == "-O" ]]; then
+    echo "ERROR: do not pass -O; the output directory is the second argument" >&2
+    exit 2
+  fi
+done
+
+if [[ ! -f "$circusnv_dir/CircuSNV.sh" ]]; then
+  echo "ERROR: no CircuSNV.sh in $circusnv_dir" >&2
+  exit 2
+fi
+if [[ "$output_dir" != /* ]]; then
+  echo "ERROR: output_dir must be an absolute path: $output_dir" >&2
+  exit 2
+fi
+if [[ -e "$output_dir" && -n "$(ls -A "$output_dir")" ]]; then
+  echo "ERROR: output_dir exists and is not empty: $output_dir" >&2
+  exit 2
+fi
+mkdir -p "$output_dir"
+
+# Lmod functions are not always safe under 'set -u'.
+set +u
+module load git || echo "WARNING: 'module load git' failed; commit info may be missing" >&2
+set -u
+
+echo "=== CircuSNV test run ==="
+echo "Start:        $(date '+%Y-%m-%d %H:%M:%S')"
+echo "Job ID:       ${SLURM_JOB_ID:-none}"
+echo "Threads:      ${SLURM_CPUS_PER_TASK:-unset}"
+echo "Commit:       $(git -C "$circusnv_dir" rev-parse HEAD || echo unknown)"
+echo "Local edits:"
+git -C "$circusnv_dir" diff --stat || true
+echo "Command:      bash $circusnv_dir/CircuSNV.sh $* -O $output_dir"
+echo
+
+status=0
+bash "$circusnv_dir/CircuSNV.sh" "$@" -O "$output_dir" || status=$?
+
+echo
+echo "End:          $(date '+%Y-%m-%d %H:%M:%S')"
+echo "Exit status:  $status"
+set +u
+module list
+set -u
+exit "$status"
