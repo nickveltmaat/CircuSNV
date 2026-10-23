@@ -1,0 +1,6 @@
+# Tekstdetectie automatisch, scripts altijd met LF-regeleinden
+* text=auto
+*.sh  text eol=lf
+*.py  text eol=lf
+*.md  text eol=lf
+*.png binary
