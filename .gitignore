@@ -1,0 +1,25 @@
+# Data en output: NOOIT in git (de repo is openbaar, dus geen patiëntdata)
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.bam
+*.bai
+*.cram
+*.vcf
+*.vcf.gz
+*.vcf.gz.tbi
+*.log
+results/
+output/
+tmp/
+
+# Claude Code: persoonlijk, per machine
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Python en OS
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
