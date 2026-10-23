@@ -35,7 +35,8 @@ Vardict() { #1: Input .bam file   #2 Output folder
     bgzip -c "$out/${base_name}_VarDict_RAW.vcf" > "$out/${base_name}_VarDict_inter.vcf.gz" && bcftools index "$out/${base_name}_VarDict_inter.vcf.gz" && cp "$out/${base_name}_VarDict_inter.vc"* "$out/mnvcalling"
     bcftools filter -O z -i "FORMAT/DP > ${RDP} & FORMAT/AF > ${VAF} & FORMAT/VD > ${MRD}" "$out/${base_name}_VarDict_inter.vcf.gz" > "$out/${base_name}_VarDict_inter2.vcf.gz" && \
     process_vcf "$out/${base_name}_VarDict_inter2.vcf.gz" "$out/${base_name}_VarDict.vcf"
-    rm -rf "$out/${base_name}"*inter*.*
+    # Only VarDict's own intermediates: the callers run in parallel in the same directory
+    rm -rf "$out/${base_name}_VarDict"*inter*.*
     echo -e "VarDict DONE for $base_name\n"
   )
 }
