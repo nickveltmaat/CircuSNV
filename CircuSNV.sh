@@ -6,7 +6,7 @@
 #SBATCH --mem=16gb
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=16
-#SBATCH --get-user-env=L60
+#SBATCH --get-user-env
 #SBATCH --export=NONE
 
 
@@ -37,6 +37,7 @@ Optional arguments:
   -M   Minimum reads supporting a mutation (default: [3])
   -S   Strand-bias threshold (default: [0.1])
   -H   Enable MNV calling (true/[false])
+  -B   Bayesian Prior for MNVista (default: [0.5])
   -X   Crosslink table TSV
   -T   Use matched control logic (true/[false])
   -U   Use UNMET score to filter error-prone variants (true/[false])
@@ -56,6 +57,7 @@ Qual="25"            # minimum base quality
 MRD="3"              # minimum reads supporting a mutation
 SB="0.9"             # strand-bias threshold
 MNV="false"          # enable multi-nucleotide-variant logic?
+PRIOR="0.5"          # Bayesian prior for MNVista
 CrosslinkTable=""    # TSV file for crosslinking (empty = off)
 Matched="false"      # use matched control logic?
 UNMET="false"        # use UNMET score filtering
@@ -65,7 +67,7 @@ OutputDir="./output"
 THREADS=${SLURM_CPUS_PER_TASK:-12}
 
 ###  Parsing parameters  ###
-while getopts "R:L:I:V:D:C:P:Q:B:M:S:H:X:T:U:O:h:" arg; do
+while getopts "R:L:I:V:D:C:P:Q:M:S:H:B:X:T:U:O:h:" arg; do
   case $arg in
     R) Reference=$OPTARG;;      # "/groups/umcg-pmb/tmp01/apps/data/reference_sequences/Homo_sapiens_assembly38.fasta"
     L) Listregions=$OPTARG;;    # "/groups/umcg-pmb/tmp01/projects/hematopathology/Lymphoma/Nick/2020_covered_probe_notranslocation_hg38.bed"
@@ -78,6 +80,7 @@ while getopts "R:L:I:V:D:C:P:Q:B:M:S:H:X:T:U:O:h:" arg; do
     M) MRD=$OPTARG;;            # Minimum reads supporting a mutation
     S) SB=$OPTARG;;             # Strand bias. Lowest fraction of FW reads vs RV reads. (SB = 0.2 --> FW = 1, RV = 5 and vice versa)
     H) MNV=$OPTARG;;            # if "true", apply MultiNucleotide Variant calling (detect variants in pHase)
+    B) PRIOR=$OPTARG;;          # Bayesian prior for calling MNVs with MNVista. Default 0.5 (equal odds)
     X) CrosslinkTable=$OPTARG;; # tab separated table (.tsv file) with 'samplename', 'timepoint' and 'corresponding_baseline' columns
     T) Matched=$OPTARG;;        # if "true", apply matched_control logic
     U) UNMET=$OPTARG;;          # if "true", apply UNMET score to filter hard to sequence regions
@@ -101,12 +104,12 @@ check_required_args() {
 
 check_required_args
 
-#֖ Initiating settings ֖#
+# Initiating settings #
 cd /groups/umcg-pmb/tmp02/projects/hematopathology/Nick/CircuSNV/
 envpath="./env"
 SBU=$(echo "scale=2; 1 / $SB" | bc)
 
-echo -e "\nSettings: \nInput bam(s): $Inputbam\nReference: $Reference\nPanel: $Listregions\nMinimum VAF: $VAF\nMinimum Read Depth: $RDP\nMinimum Base Quality: $Qual\nMinimum Overlapping Calls: $Calls\nPoN: $PoN\nStrand Bias: $SB\nMultiNucleotide Variant Calling: $MNV\nCrosslink Table: $CrosslinkTable\nMatched Control Logic: $Matched\nUNMET & repeat filtering: $UNMET\nMain output directory: $OutputDir"
+echo -e "\nSettings: \nInput bam(s): $Inputbam\nReference: $Reference\nPanel: $Listregions\nMinimum VAF: $VAF\nMinimum Read Depth: $RDP\nMinimum Base Quality: $Qual\nMinimum Overlapping Calls: $Calls\nPoN: $PoN\nStrand Bias: $SB\nMultiNucleotide Variant Calling: $MNV\nBayesian Prior for MNV calling: $PRIOR\nCrosslink Table: $CrosslinkTable\nMatched Control Logic: $Matched\nUNMET & repeat filtering: $UNMET\nMain output directory: $OutputDir"
 
 
 # Function to load modules
@@ -145,28 +148,7 @@ process_vcf() {
   bcftools index "${output_vcf}.gz"
 }
 
-# Function to filter merged_vcf.txt based on the matched control using matched_filtering.py
-matched_filter() {
-  local samp="$1"         # sample name
-  local tbl="$2"          # crosslink table
-  local curr_file="$3"    # current (cases) file
-  local ctrl_file="$4"    # control file
-  local label="$5"        # short label for logging
-  
-  echo "[$samp] $label: ctrl_file=$ctrl_file"
-  echo "[$samp] $label: curr_file=$curr_file"
-
-  if [[ -f "$ctrl_file" && -f "$curr_file" ]]; then
-    local before=$(wc -l < "$curr_file")
-    echo "[$samp] $label: variants before = $before"
-    pythonscript ./matched_filtering.py "$curr_file" "$ctrl_file" "$curr_file"
-    local after=$(wc -l < "$curr_file")
-    echo "[$samp] $label: variants after  = $after"
-  else
-    echo "[$samp] $label: skipped — missing file(s) or sample is a control"
-  fi
-}
-
+# Function to add UNMET score and filter 
 unmet_filter() {
   local samp="$1"                             # sample name, e.g. “SAMPLE123”
   local curr_file="$2"                        # merged_vcfs.txt for that sample
@@ -214,6 +196,183 @@ unmet_filter() {
   echo "[$samp] $label: variants after  = $(wc -l < "$curr_file")"
 }
 
+# Function to add reads info from matched control to each mutation found in tumor sample 
+add_matched_control_metrics() {
+  local mutations="$1"
+  local samplename="$2"
+
+  echo "[MATCHED CTRL] Adding matched control metrics for each mutation..."
+
+  # find matched control (strip CR if present)
+  matched_control=$(
+    awk -F $'\t' -v s="$samplename" '$1==s{gsub(/\r/,"",$4); print $4; exit}' "$CrosslinkTable"
+  )
+  [[ -z "$matched_control" ]] && { echo "ERROR: no matched_control for $samplename" >&2; return 1; }
+
+  # control BAM path
+  ctrl="${Inputbam%/}/${matched_control}.bam"
+  [[ ! -f "$ctrl" ]] && { echo "ERROR: control BAM not found: $ctrl" >&2; return 1; }
+
+  # ensure BAM index exists (create if necessary)
+  if [[ ! -f "${ctrl}.bai" && ! -f "${ctrl%.bam}.bai" ]]; then
+    echo "[MATCHED CTRL] Index for $ctrl not found; creating..."
+    samtools index "$ctrl" || { echo "ERROR: samtools index failed for $ctrl" >&2; return 1; }
+  fi
+
+  local out="${mutations%.txt}.control_reads.txt"
+  local merged="${mutations%.txt}.with_control.txt"
+
+  # make temporary files
+  local bedfile
+  local pileupfile
+  bedfile=$(mktemp "${TMPDIR:-/tmp}/ctrl_pos.XXXXXX.bed")
+  pileupfile=$(mktemp "${TMPDIR:-/tmp}/ctrl_pileup.XXXXXX.txt")
+
+  # cleanup on exit
+  trap 'rm -f "$bedfile" "$pileupfile"' RETURN INT TERM
+
+  # create BED with 0-based start, 1-based end for each mutation position
+  # (also remove potential CRs)
+  awk -F $'\t' 'BEGIN{OFS="\t"} {gsub(/\r/,"",$0); if(NF>=2 && $1!="" && $2!="") print $1, $2-1, $2}' "$mutations" > "$bedfile"
+
+  # run mpileup once for all positions (-l accepts a BED), write stdout to pileupfile
+  # use -A -B to include anomalous reads & disable BAQ (same as before)
+  echo "[MATCHED CTRL] Running samtools mpileup for all positions..."
+  samtools mpileup -f "$Reference" -l "$bedfile" -d 10000000 -A -B "$ctrl" > "$pileupfile" 2>/dev/null || true
+
+  # Now parse the pileup and the mutation file in one awk run:
+  #  - first (NR==FNR) load pileup lines into an array keyed by chr:pos
+  #  - then, for each mutation line, lookup the pileup entry and compute counts (ref/alt/depth)
+  # The counting logic is similar to your previous awk, but runs only once per pileup line.
+  awk -v OFS="\t" -v CONTROL="$matched_control" -v OUT="$out" -v MERGED="$merged" '
+    function strip_start_end(s,   tmp) {
+      # remove start-of-read markers ^X and read-end $ from the mpileup read_bases string
+      gsub(/\^./, "", s)
+      gsub(/\$/, "", s)
+      return s
+    }
+
+    # count function: s is read_bases, REF and ALT provided
+    function count_ref_alt(s, REF, ALT,   i, L, c, n_ref, n_alt, ref_len, alt_len, ins_seq, del_seq, sign, j, num, indlen, seq, base) {
+      n_ref = 0; n_alt = 0
+      ref_len = length(REF); alt_len = length(ALT)
+      if (alt_len > ref_len) ins_seq = substr(ALT, ref_len+1)
+      else ins_seq = ""
+      if (ref_len > alt_len) del_seq = substr(REF, alt_len+1)
+      else del_seq = ""
+
+      L = length(s); i = 1
+      while (i <= L) {
+        c = substr(s, i, 1)
+        if (c == "." || c == ",") {
+          # check following token: could be indel marker +/-
+          nextc = substr(s, i+1, 1)
+          if (nextc == "+" || nextc == "-") {
+            sign = nextc; j = i + 2; num = ""
+            while (j <= L && substr(s, j, 1) ~ /[0-9]/) { num = num substr(s, j, 1); j++ }
+            indlen = (num == "" ? 0 : num + 0)
+            seq = substr(s, j, indlen)
+            if (sign == "+") {
+              if (ins_seq != "" && seq == ins_seq) n_alt++
+            } else {
+              if (del_seq != "" && seq == del_seq) n_alt++
+            }
+            i = j + indlen
+          } else {
+            n_ref++; i++
+          }
+        } else if (c == "+" || c == "-") {
+          sign = c; j = i + 1; num = ""
+          while (j <= L && substr(s, j, 1) ~ /[0-9]/) { num = num substr(s, j, 1); j++ }
+          indlen = (num == "" ? 0 : num + 0)
+          seq = substr(s, j, indlen)
+          if (sign == "+") {
+            if (ins_seq != "" && seq == ins_seq) n_alt++
+          } else {
+            if (del_seq != "" && seq == del_seq) n_alt++
+          }
+          i = j + indlen
+        } else if (c == "*") {
+          # placeholder for deletion in mpileup; ignore
+          i++
+        } else {
+          base = toupper(c)
+          if (ref_len == 1 && alt_len == 1) {
+            if (base == toupper(ALT)) n_alt++
+            else if (base == toupper(REF)) n_ref++
+            else n_alt++    # conservative: other base = alt
+          } else {
+            # heuristic for indel/complex: match first base of ALT
+            if (alt_len > 0 && base == toupper(substr(ALT,1,1))) n_alt++
+            else n_ref++
+          }
+          i++
+        }
+      }
+      return n_ref " " n_alt
+    }
+
+    # --- load pileup into array keyed by chr:pos ---
+    FNR==NR {
+      # pileup format: chr pos ref depth read_bases qual...
+      chr = $1; pos = $2; depth = $4; read_bases = $5
+      key = chr ":" pos
+      read_bases = strip_start_end(read_bases)
+      counts = count_ref_alt(read_bases, "X", "Y")  # placeholder; we will recount per REF/ALT later
+      # store raw read_bases and depth for per-mutation counting later
+      pile_rb[key] = read_bases
+      pile_dp[key] = depth + 0
+      next
+    }
+
+    # --- process mutations file lines ---
+    {
+      line = $0
+      # preserve original fields reliably even if info contains tabs (we assume tabs separate the standard 6 columns)
+      chrom = $1; pos = $2; ref = $3; alt = $4; sample = $5
+      # info might be empty or could contain tabs; reconstruct it starting at $6 if present
+      info = ""
+      if (NF >= 6) {
+        info = $6
+        for (i = 7; i <= NF; i++) info = info OFS $i
+      }
+
+      key = chrom ":" pos
+      if (key in pile_rb) {
+        rb = pile_rb[key]
+        dp = pile_dp[key] + 0
+        # compute counts using actual REF/ALT
+        cl = count_ref_alt(rb, ref, alt)
+        split(cl, a, " ")
+        ref_count = a[1] + 0
+        alt_count = a[2] + 0
+      } else {
+        ref_count = 0; alt_count = 0; dp = 0
+      }
+
+      # write control reads output (control name only)
+      print chrom, pos, ref, alt, sample, CONTROL, ref_count, alt_count, dp > OUT
+
+      # build merged info: append CONTROL and counts to original info
+      ctrl_append = "_CONTROL:" CONTROL "_CREF:" ref_count "_CALT:" alt_count "_CDP:" dp
+      if (info == "") new_info = ctrl_append
+      else new_info = info ctrl_append
+
+      # write merged line: keep six-columns-like shape: chrom pos ref alt sample new_info
+      print chrom, pos, ref, alt, sample, new_info > MERGED
+    }
+  ' "$pileupfile" "$mutations"
+
+  echo "[MATCHED CTRL] Wrote control reads to: $out"
+  echo "[MATCHED CTRL] Wrote merged input+control to: $merged"
+
+  # cleanup (trap will remove tmp files)
+  return 0
+}
+
+
+
+
 ################################################### 
 # Functions to run each tool, filter on Read Dept, VAF and Mutant allele dept & creating .vcf file
 
@@ -246,7 +405,7 @@ Mutect2() { #1: Input .bam file    #2: Output folder
     module load GATK/4.3.0.0-GCCcore-11.3.0-Java-11
     load_modules
     
-    gatk --java-options -Xmx12G Mutect2 --QUIET --verbosity ERROR --create-output-variant-index false --native-pair-hmm-threads $THREADS --min-base-quality-score $Qual --callable-depth 10 --minimum-allele-fraction 0.00000000001 -R $Reference -I $1 -O $2${base_name}_Mutect2_RAW.vcf -L $Listregions $3 && \
+    gatk --java-options -Xmx15G Mutect2 --QUIET --verbosity ERROR --create-output-variant-index false --native-pair-hmm-threads $THREADS --min-base-quality-score $Qual --callable-depth 10 --minimum-allele-fraction 0.00000000001 -R $Reference -I $1 -O $2${base_name}_Mutect2_RAW.vcf -L $Listregions $3 && \
     gatk FilterMutectCalls --QUIET --verbosity ERROR --create-output-variant-index false --min-allele-fraction 0.00000000001 -R $Reference -V $2${base_name}_Mutect2_RAW.vcf -O $2${base_name}_M2_Fstats1.vcf
     bcftools filter -O v -i "(FORMAT/SB[0:2]/FORMAT/SB[0:3]) >= ${SB} & (FORMAT/SB[0:2]/FORMAT/SB[0:3]) <= ${SBU}" $2${base_name}_M2_Fstats1.vcf > $2${base_name}_M2_Fstats.vcf
     
@@ -410,55 +569,12 @@ generate_mnv_input() {
     #### MNV Filtering on UNMET score ###
     if [[ "$UNMET" == "true" ]]; then
       unmet_filter "$samplename" "$mnvpath/sites2.txt" "./hg38_genome.UNMET_bin10bp.bed" 0.90 "MNV input -- UNMET filtering"
-    fi
-    
-    ##### MATCHED MODE MNV FILTERING #####
-    if [[ "$Matched" == "true" ]]; then
-      matched_control=$(awk -F $'\t' -v s="$samplename" '$1==s{print $4}' "$CrosslinkTable")
-      matched_filter "$samplename" "$CrosslinkTable" "$mnvpath/sites2.txt" "$OutputDir/$matched_control/mnvcalling/sites2.txt" "MNV input -- Matched filtering"
-    fi
-    #### END OF MATCHED MODE MNV FILTERING ####
-    
+    fi  
     
     #convert to vcf
     pythonscript ./isec_to_vcf.py $mnvpath/sites2.txt $mnvpath/sites.vcf 'TRUE'
     bgzip -c $mnvpath/sites.vcf > $mnvpath/sites.vcf.gz && bcftools index $mnvpath/sites.vcf.gz
-    echo "MNV input: merging 4 tools to 1 list DONE --> sites.vcf"
-   
-    
-#    ############ OPTIONAL MNV FILTERING ############
-#    #Filtering in GNOMAD & 1000G HERE: look into opencravat env for .vcf files with snps
-#    echo 'MNV input: Filtering: filtering mnv input list on SNP databases'
-#    bash ./filter_snps_mnv_input2.sh -a 0.001 -g "$envpath/lib/python3.9/site-packages/cravat/modules/annotators/gnomad3/data/" -b $Listregions -d "$envpath/lib/python3.9/site-packages/cravat/modules/annotators/thousandgenomes/data/"
-#    #Filter $OutputDir/$samplename/mnvcalling/sites.txt on 1000G.txt and Gnomad3.txt outputs
-#    grep -vF -f <(cut -f1-4 "$envpath/lib/python3.9/site-packages/cravat/modules/annotators/gnomad3/data/gnomad3_$(basename $Listregions)_0.001.txt" "$envpath/lib/python3.9/site-packages/cravat/modules/annotators/thousandgenomes/data/1000g_$(basename $Listregions)_0.001.txt") $mnvpath/sites2.txt > $mnvpath/sites_snp_filtered.txt
-#    pythonscript ./isec_to_vcf.py $mnvpath/sites_snp_filtered.txt $mnvpath/sites_snp_filtered.vcf 'TRUE'
-#    echo "MNV input: Filtering: filtering on SNP dbs DONE --> sites_snp_filtered.vcf"
-#    
-#    
-#    if [ -z "$PoN" ]; then
-#      cp $mnvpath/sites_snp_filtered.txt $mnvpath/merged_vcfs_phased_mnv.txt
-#      echo "MNV input: Filtering: filtering on PoN was NOT PERFORMED --> merged_vcfs_phased_mnv.txt (copy from input sites_snp_filtered.txt)"
-#    else
-#      echo "MNV input: Filtering: filtering mnv input list on PoN..."
-#      
-#      bgzip -c $mnvpath/sites_snp_filtered.vcf > $mnvpath/sites_snp_filtered.vcf.gz && bcftools index $mnvpath/sites_snp_filtered.vcf.gz #only bgzip and index if pon filtering is performed
-#      mkdir $mnvpath/ponfiltered/
-#      bcftools isec -p $mnvpath/ponfiltered/ -O v -n~10 $mnvpath/sites_snp_filtered.vcf.gz ./PoN/BLACKLIST_combined.vcf.gz
-#      bcftools isec -p $mnvpath/ponfiltered2/ -O v -n~10 $mnvpath/sites.vcf.gz ./PoN/BLACKLIST_combined.vcf.gz
-#      pythonscript ./merge_variants.py $samplename "phased_pon" $OutputDir
-#      pythonscript ./isec_to_vcf.py $mnvpath/sites_pon_filtered.txt $mnvpath/sites_pon_filtered.vcf 'TRUE'
-#      echo "MNV input: Filtering: filtering on PoN DONE --> merged_vcfs_phased_mnv.txt"
-#    fi
-#    ############ OPTIONAL MNV FILTERING END ###########
-#    
-#    # Convert merged_vcfs_phased_mnv.txt into merged_vcfs_phased_mnv.vcf with VAF/RD/MRD metrics
-#    echo -e "MNV input: converting mnv input list to vcf...\nMNV input: Generating list for MNV analysis done!"
-#    pythonscript ./isec_to_vcf.py $mnvpath/merged_vcfs_phased_mnv.txt $mnvpath/merged_vcfs_phased_mnv.vcf 'TRUE'
-#    #bgzip -c $mnvpath/merged_vcfs_phased_mnv.vcf > $mnvpath/merged_vcfs_phased_mnv.vcf.gz && bcftools index $mnvpath/merged_vcfs_phased_mnv.vcf.gz
-    
-    echo -e "sites.vcf  ==  merged 4 tools MNV input\nsites_snp_filtered.vcf  ==  Filtered on 1000G & Gnomad3 dbs\nmerged_vcfs_phased_mnv.vcf  ==  Subsequently filtered on PoN if available\nsites_pon_filtered.vcf  ==  sites.vcf filtered on ONLY PoN (so without SNP dbs)" > $mnvpath/README2.txt
-       
+    echo "MNV input: merging 4 tools to 1 list DONE --> sites.vcf" 
   )
 }
 
@@ -467,7 +583,7 @@ mnv_calling() {
   local samplename=$1
   local crosslink_table=$2
   
-  mnvista_cmd="./MNVista $bam_file $OutputDir/$samplename/mnvcalling/sites.vcf $OutputDir/$samplename/mnvcalling/results -T 12 -M 6 -R 100 -F 0 -L 0"
+  mnvista_cmd="./MNVista $bam_file $OutputDir/$samplename/mnvcalling/sites.vcf $OutputDir/$samplename/mnvcalling/results -T 15 -M 6 -R 150 -F 0 -J 0"
   [ -n "$PoN" ] && mnvista_cmd+=" -C './MNV_PoN_No_overlap_new.txt'"
   
   if [ -n "$crosslink_table" ]; then
@@ -501,9 +617,27 @@ mnv_calling() {
       (
         module load HTSlib/1.19.1-GCCcore-11.3.0
         ml GCC/13.3.0 
-        mnvista_cmd+=" -S 60 -N 3 -B 0.95 -P 0.025 -K true"
+        mnvista_cmd+=" -S 10 -N 3 -B 0.95 -P $PRIOR -K true"
         eval "$mnvista_cmd"
-        echo -e "MNV process for sample $samplename DONE ...\n"
+        echo -e "MNV process for baseline sample $samplename DONE ...\n"
+        
+        if [[ "${Matched,,}" == "true" ]]; then
+          # If matched mode is on, additionally run MNVista on matched control sample and store in new folder
+          matched_control=$(awk -F $'\t' -v s="$samplename" '$1==s{gsub(/\r/,"",$4); print $4; exit}' "$CrosslinkTable")
+          if [[ -n "$matched_control" ]]; then
+            echo "MNV input: Running MNVista on baseline tumor MNVs in matched control ${matched_control}"
+            ctrl="${Inputbam%/}/${matched_control}.bam"
+            matched_output="$OutputDir/$samplename/mnvcalling/results/matched_control"
+            mkdir -p "$matched_output"
+            if [[ -f "$ctrl" ]]; then
+              ./MNVista "$ctrl" "$OutputDir/$samplename/mnvcalling/results/results.vcf" "$matched_output" -T 12 -M 6 -R 100 -F 0 -J 0 -S 10 -N 3 -B 0.95 -P $PRIOR -K true
+            else
+              echo "WARNING: matched control BAM not found: $ctrl — skipping MNVista"
+            fi
+          else
+            echo "No matched control for sample $samplename — skipping matched MNV analysis"
+          fi
+        fi
       )
       
     else
@@ -518,7 +652,7 @@ mnv_calling() {
     (
       module load HTSlib/1.19.1-GCCcore-11.3.0
       ml GCC/13.3.0
-      mnvista_cmd+=" -S 60 -N 3 -B 0.95 -P 0.025 -K true"
+      mnvista_cmd+=" -S 10 -N 3 -B 0.95 -P $PRIOR -K true"
       eval "$mnvista_cmd"
       echo -e "MNV process for sample $samplename DONE ...\n"
     )
@@ -538,6 +672,7 @@ else
   echo -e "\nPoN argument is given!!\n"
   mkdir -p ./PoN/
   
+  
   #Directory PoN with containing samples:
   if [[ -d $PoN ]]; then
     echo 'PoN is directory'
@@ -550,6 +685,7 @@ else
       
       echo -e "\n\nGenerating VCF for normal control: $samplename"
       mkdir ./PoN/$samplename/
+      mkdir -p ./PoN/$samplename/mnvcalling
       
       # Check if BAM index file exists, if not create it
       if [ ! -e "${bam_index[0]}" ]; then
@@ -576,6 +712,7 @@ else
       xargs -a ./PoN/Mutect2-normals.dat bcftools isec -o ./PoN/PoN_Mutect2.txt -O v -n +1 && xargs -a ./PoN/VarDict-normals.dat bcftools isec -o ./PoN/PoN_Vardict.txt -O v -n +1 && \
       xargs -a ./PoN/LoFreq-normals.dat bcftools isec -o ./PoN/PoN_Lofreq.txt -O v -n +1 && xargs -a ./PoN/SiNVICT-normals.dat bcftools isec -o ./PoN/PoN_Sinvict.txt -O v -n +1
     )
+    
     pythonscript ./isec_to_vcf.py ./PoN/PoN_Mutect2.txt ./PoN/PoN_Mutect2.vcf 'FALSE' && pythonscript ./isec_to_vcf.py ./PoN/PoN_Vardict.txt ./PoN/PoN_Vardict.vcf 'FALSE' && \
     pythonscript ./isec_to_vcf.py ./PoN/PoN_Lofreq.txt ./PoN/PoN_Lofreq.vcf 'FALSE' && pythonscript ./isec_to_vcf.py ./PoN/PoN_Sinvict.txt ./PoN/PoN_Sinvict.vcf 'FALSE'
     
@@ -632,6 +769,88 @@ fi
 
 
 
+### NEW FUNCTION: 
+# Retry wrapper: run a caller and ensure expected files exist, retry if necessary.
+# Usage: run_caller_with_retries <CallerName> <bam> <outdir> [max_attempts] [sleep_seconds]
+run_caller_with_retries() {
+  local caller="$1"; shift
+  local bam="$1"; shift
+  local outdir="$1"; shift
+  local max_attempts="${1:-3}"; shift || true
+  local sleep_seconds="${1:-10}"; shift || true
+
+  local base
+  base=$(basename "$bam" .bam)
+
+  # determine expected outputs for each caller
+  local expected=()
+  case "$caller" in
+    Vardict)
+      expected+=("$outdir/${base}_VarDict_RAW.vcf" "$outdir/${base}_VarDict.vcf.gz.csi")
+      ;;
+    Mutect2)
+      expected+=("$outdir/${base}_Mutect2_RAW.vcf" "$outdir/${base}_Mutect2.vcf.gz.csi")
+      ;;
+    Lofreq)
+      expected+=("$outdir/${base}_LoFreq_RAW.vcf" "$outdir/${base}_LoFreq.vcf.gz.csi")
+      ;;
+    Sinvict|SiNVICT|SiNVict)
+      expected+=("$outdir/${base}_SiNVICT_RAW.vcf" "$outdir/${base}_SiNVICT.vcf.gz.csi")
+      ;;
+    *)
+      echo "run_caller_with_retries: unknown caller '$caller'" >&2
+      return 2
+      ;;
+  esac
+
+  local attempt=1
+  local missing
+  while (( attempt <= max_attempts )); do
+    echo "[${caller}] attempt ${attempt}/${max_attempts} for sample ${base} (outdir=${outdir})"
+
+    # call the function if present, otherwise call as external command
+    if declare -F "$caller" >/dev/null 2>&1; then
+      # it's a shell function - call it
+      if ! "$caller" "$bam" "$outdir"; then
+        echo "[${caller}] returned non-zero exit on attempt $attempt"
+      fi
+    else
+      # try as external command
+      if ! command -v "$caller" >/dev/null 2>&1; then
+        echo "[${caller}] not found as function or external command" >&2
+        return 2
+      fi
+      if ! "$caller" "$bam" "$outdir"; then
+        echo "[${caller}] external command returned non-zero exit on attempt $attempt"
+      fi
+    fi
+
+    # verify expected files exist and are non-empty
+    missing=()
+    for f in "${expected[@]}"; do
+      if [[ ! -s "$f" ]]; then
+        missing+=("$f")
+      fi
+    done
+
+    if (( ${#missing[@]} == 0 )); then
+      echo "[${caller}] success for ${base}"
+      return 0
+    fi
+
+    echo "[${caller}] missing/empty outputs after attempt $attempt: ${missing[*]}"
+    if (( attempt < max_attempts )); then
+      echo "[${caller}] retrying in ${sleep_seconds}s..."
+      sleep "$sleep_seconds"
+    fi
+    ((attempt++))
+  done
+
+  echo "[${caller}] failed after ${max_attempts} attempts for ${base}. Missing: ${missing[*]}" >&2
+  return 1
+}
+
+###
 
 
 ###################################################
@@ -659,11 +878,23 @@ run_tumor_sample() {
   fi
     
   echo "Variant calling in tumor sample..."
-  Vardict $bam_file "$OutputDir/$samplename/" &
-  Mutect2 $bam_file "$OutputDir/$samplename/" &
-  Lofreq $bam_file "$OutputDir/$samplename/" &
-  Sinvict $bam_file "$OutputDir/$samplename/" ##################
-  wait
+  
+  
+  #NEW
+  # launch all wrappers in background; they retry internally
+  run_caller_with_retries Vardict "$bam_file" "$OutputDir/$samplename/" 3 10 & pid_vardict=$!
+  run_caller_with_retries Mutect2 "$bam_file" "$OutputDir/$samplename/" 3 10 & pid_mutect2=$!
+  run_caller_with_retries Lofreq "$bam_file" "$OutputDir/$samplename/" 3 10 & pid_lofreq=$!
+  run_caller_with_retries Sinvict "$bam_file" "$OutputDir/$samplename/" 3 10 & pid_sinvict=$!
+  
+  # wait for all to finish and capture exit statuses
+  wait "$pid_vardict"; status_vardict=$?
+  wait "$pid_mutect2"; status_mutect2=$?
+  wait "$pid_lofreq"; status_lofreq=$?
+  wait "$pid_sinvict"; status_sinvict=$?
+  
+  echo "Vardict: $status_vardict, Mutect2: $status_mutect2, LoFreq: $status_lofreq, SiNVICT: $status_sinvict"
+  # handle failures if any non-zero
   
   ### Merge outputs from all tools, zip and index:
   (
@@ -697,12 +928,6 @@ run_tumor_sample() {
     unmet_filter "$samplename" "$OutputDir/$samplename/merged_vcfs.txt" "./hg38_genome.UNMET_bin10bp.bed" 0.90 "UNMET filtering"
   fi
 
-  #### FILTERING BASED ON MATCHED NORMAL SAMPLE ####
-  if [[ "$Matched" == "true" ]]; then
-    matched_control=$(awk -F $'\t' -v s="$samplename" '$1==s{print $4}' "$CrosslinkTable")
-    matched_filter "$samplename" "$CrosslinkTable" "$OutputDir/$samplename/merged_vcfs.txt" "$OutputDir/$matched_control/intermediate-files/merged_vcfs.txt" "Matched filtering"
-  fi
-
   #MNVCalling
   if [ "$MNV" == "true" ]; then
     #If phased argument is true: 
@@ -710,10 +935,10 @@ run_tumor_sample() {
     mnv_calling $samplename $CrosslinkTable
   elif [ "$MNV" == "false" ]; then
     echo "-H argument is set to 'false'; not proceeding with MNV calling"
-    #rm -rf $OutputDir/$samplename/mnvcalling/
+    rm -rf $OutputDir/$samplename/mnvcalling/
   else
     echo "-H argument not supplied or is not 'true' nor 'false'; not proceeding with MNV calling"
-    #rm -rf $OutputDir/$samplename/mnvcalling/
+    rm -rf $OutputDir/$samplename/mnvcalling/
   fi
   
   #1st annotation step
@@ -733,7 +958,27 @@ run_tumor_sample() {
     echo "After post-filtering, no mutations were left to annotate or plot, therefore, these steps are skipped for this sample" > $OutputDir/$samplename/NO_MUTS.txt
   else #If mutations are found:
     echo 'At least one mutation remains, on to annotating final list...' 
-    annotate $OutputDir/$samplename/merged_vcfs_annotated-filtered.txt "Final_list_$samplename" excel vcf
+    
+    if [[ "${Matched,,}" == "true" ]]; then
+      # find matched control (strip CR)
+      matched_control=$(awk -F $'\t' -v s="$samplename" '$1==s{gsub(/\r/,"",$4); print $4; exit}' "$CrosslinkTable")
+    
+      if [[ -n "$matched_control" ]]; then
+        (
+          module load SAMtools/1.19.2-GCCcore-11.3.0
+          add_matched_control_metrics "$OutputDir/$samplename/merged_vcfs_annotated-filtered.txt" "$samplename"
+        )
+        annotate_input="$OutputDir/$samplename/merged_vcfs_annotated-filtered.with_control.txt"
+      else
+        echo "[MATCHED CTRL] No matched control for $samplename — skipping matched metrics"
+        annotate_input="$OutputDir/$samplename/merged_vcfs_annotated-filtered.txt"
+      fi
+    
+      annotate "$annotate_input" "Final_list_$samplename" excel vcf
+    else
+      annotate "$OutputDir/$samplename/merged_vcfs_annotated-filtered.txt" "Final_list_$samplename" excel vcf
+      echo 'tmp'
+    fi
   fi
   
   #Wait for MNV algorithm to finish
@@ -754,62 +999,54 @@ run_tumor_sample() {
 
 ###################################################
 # Running Tumor samples from directory or as single file
-mkdir -p $OutputDir
-if [[ -d $Inputbam ]]; then
-  if [[ -n "$CrosslinkTable" && -f "$CrosslinkTable" ]]; then
-    if [[ "$Matched" == "true" ]]; then
-      echo "Matched mode: controls --> baselines --> follow-ups"
+mkdir -p "$OutputDir"
 
-      # 1) Controls
-      awk -F $'\t' 'NR>1 && $2=="baseline"{print $4}' "$CrosslinkTable" | sort -u | \
-      while read -r ctrl; do
-        run_tumor_sample "$Inputbam/${ctrl}.bam"
-      done
+if [[ -d "$Inputbam" ]]; then
+  if [[ -n "${CrosslinkTable:-}" && -f "$CrosslinkTable" ]]; then
+    echo "Using CrosslinkTable: processing baselines --> follow-ups (controls ignored)"
 
-      # 2) Baselines
-      awk -F $'\t' 'NR>1 && $2=="baseline"{print $1}' "$CrosslinkTable" | \
-      while read -r samp; do
-        run_tumor_sample "$Inputbam/${samp}.bam"
-      done
+    # Collect baselines (col1 where col2=="baseline"), deduplicate preserving first occurrence
+    mapfile -t baselines < <(
+      awk -F $'\t' 'NR>1 && $2=="baseline" && !seen[$1]++{print $1}' "$CrosslinkTable"
+    )
 
-      # 3) Follow-ups
-      awk -F $'\t' 'NR>1 && $2=="follow-up"{print $1}' "$CrosslinkTable" | \
-      while read -r samp; do
-        run_tumor_sample "$Inputbam/${samp}.bam"
-      done
+    # Collect follow-ups (col1 where col2=="follow-up"), deduplicate preserving first occurrence
+    mapfile -t follows < <(
+      awk -F $'\t' 'NR>1 && $2=="follow-up" && !seen[$1]++{print $1}' "$CrosslinkTable"
+    )
+
+    samples=( "${baselines[@]}" "${follows[@]}" )
+
+    if [[ ${#samples[@]} -eq 0 ]]; then
+      echo "Warning: no baseline or follow-up samples found in '$CrosslinkTable'"
     else
-      # Non-matched: baselines then follow-ups
-      echo "Standard order: baselines --> follow-ups"
-      samples=( $(awk -F $'\t' 'NR>1{if($2=="baseline")print$1}NR>1{if($2=="follow-up")print$1}' "$CrosslinkTable") )
-      echo -e "\n\n\nSamples order = \n${samples[@]}\n\n\n"
+      echo -e "\nSamples order ="
+      printf '%s\n' "${samples[@]}"
       for s in "${samples[@]}"; do
         run_tumor_sample "$Inputbam/${s}.bam"
       done
     fi
+
   else
-    # No table: all BAMs
-    echo "No CrosslinkTable: processing all BAMs"
-    for bam in $Inputbam/*.bam; do
+    # No table: process all BAMs in the directory
+    echo "No CrosslinkTable: processing all BAMs in '$Inputbam'"
+    for bam in "$Inputbam"/*.bam; do
       run_tumor_sample "$bam"
     done
   fi
-elif [[ -f $Inputbam ]]; then
+
+elif [[ -f "$Inputbam" ]]; then
+  # Input is a single BAM file
   run_tumor_sample "$Inputbam"
 else
-  echo "Invalid Inputbam: $Inputbam"
-  exit 1
+  echo "Invalid Inputbam: $Inputbam" >&2
+  usage
 fi
 
 # Running Tumor samples finished
 ###################################################
 
-echo 'Finished run!  '
-
-
-
-
-
-
+echo 'Finished run!'
 
 
 
