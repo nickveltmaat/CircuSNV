@@ -57,10 +57,17 @@ validate_args
 # Upper bound of the strand-bias window (two decimals, as before)
 SBU=$(echo "scale=2; 1 / $SB" | bc)
 
+mkdir -p "$OutputDir"
+start_run_log
+trap finish_run_log EXIT
+
 echo -e "\nCircuSNV $(circusnv_version)\nInstallation: $CIRCUSNV_HOME\nThreads: $THREADS"
 echo -e "\nSettings: \nInput bam(s): $Inputbam\nReference: $Reference\nPanel: $Listregions\nMinimum VAF: $VAF\nMinimum Read Depth: $RDP\nMinimum Base Quality: $Qual\nMinimum Overlapping Calls: $Calls\nPoN: $PoN\nStrand Bias: $SB\nMultiNucleotide Variant Calling: $MNV\nBayesian Prior for MNV calling: $PRIOR\nCrosslink Table: $CrosslinkTable\nMatched Control Logic: $Matched\nUNMET & repeat filtering: $UNMET\nMain output directory: $OutputDir"
 
+log "Panel of normals"
 prepare_pon
+log "Tumor samples"
 run_samples
 
+log "Finished run"
 echo 'Finished run!'
