@@ -47,9 +47,12 @@ prepare_pon() {
     done
 
     echo -e "\nMerging outputs for PoN..."
-    # Merge per tool -> 4 separate blacklists as .vcf file
-    ls "$PON_DIR/"*/*Mutect2.vcf.gz | sed 's/^/ /' > "$PON_DIR/Mutect2-normals.dat" & ls "$PON_DIR/"*/*VarDict.vcf.gz | sed 's/^/ /' > "$PON_DIR/VarDict-normals.dat" & \
-    ls "$PON_DIR/"*/*LoFreq.vcf.gz | sed 's/^/ /' > "$PON_DIR/LoFreq-normals.dat" & ls "$PON_DIR/"*/*SiNVICT.vcf.gz | sed 's/^/ /' > "$PON_DIR/SiNVICT-normals.dat"
+    # Merge per tool -> 4 separate blacklists as .vcf file. The lists are written one after
+    # the other: bcftools isec below must not read a list that is still being written.
+    ls "$PON_DIR/"*/*Mutect2.vcf.gz | sed 's/^/ /' > "$PON_DIR/Mutect2-normals.dat"
+    ls "$PON_DIR/"*/*VarDict.vcf.gz | sed 's/^/ /' > "$PON_DIR/VarDict-normals.dat"
+    ls "$PON_DIR/"*/*LoFreq.vcf.gz | sed 's/^/ /' > "$PON_DIR/LoFreq-normals.dat"
+    ls "$PON_DIR/"*/*SiNVICT.vcf.gz | sed 's/^/ /' > "$PON_DIR/SiNVICT-normals.dat"
     (
       module load "$MODULE_BCFTOOLS"
       xargs -a "$PON_DIR/Mutect2-normals.dat" bcftools isec -o "$PON_DIR/PoN_Mutect2.txt" -O v -n +1 && xargs -a "$PON_DIR/VarDict-normals.dat" bcftools isec -o "$PON_DIR/PoN_Vardict.txt" -O v -n +1 && \
