@@ -105,8 +105,41 @@ check_required_args() {
 check_required_args
 
 # Initiating settings #
-cd /groups/umcg-pmb/tmp02/projects/hematopathology/Nick/CircuSNV/
-envpath="./env"
+# Locate the installation directory: helper scripts, the Python env, MNVista and resources live
+# there. Under sbatch this script runs from a spool copy, so fall back to the submitted path.
+locate_home() {
+  local dir candidate
+  dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  if [[ -f "$dir/scripts/isec_to_vcf.py" ]]; then
+    echo "$dir"
+    return 0
+  fi
+  if [[ -n "${SLURM_JOB_ID:-}" ]] && command -v scontrol >/dev/null 2>&1; then
+    candidate=$(scontrol show job "$SLURM_JOB_ID" 2>/dev/null | sed -n 's/^[[:space:]]*Command=\([^[:space:]]*\).*/\1/p' | head -n 1 || true)
+    if [[ -n "$candidate" && "$candidate" != /* && -n "${SLURM_SUBMIT_DIR:-}" ]]; then
+      candidate="$SLURM_SUBMIT_DIR/$candidate"
+    fi
+    if [[ -n "$candidate" && -f "$(dirname "$candidate")/scripts/isec_to_vcf.py" ]]; then
+      (cd "$(dirname "$candidate")" && pwd)
+      return 0
+    fi
+  fi
+  if [[ -n "${SLURM_SUBMIT_DIR:-}" && -f "$SLURM_SUBMIT_DIR/scripts/isec_to_vcf.py" ]]; then
+    echo "$SLURM_SUBMIT_DIR"
+    return 0
+  fi
+  return 1
+}
+
+if [[ -z "${CIRCUSNV_HOME:-}" ]] && ! CIRCUSNV_HOME=$(locate_home); then
+  echo "ERROR: cannot find the CircuSNV installation directory; set CIRCUSNV_HOME" >&2
+  exit 1
+fi
+envpath="$CIRCUSNV_HOME/env"
+PON_DIR="$CIRCUSNV_HOME/PoN"
+UNMET_BED="$CIRCUSNV_HOME/hg38_genome.UNMET_bin10bp.bed"
+MNVISTA="$CIRCUSNV_HOME/MNVista"
+MNV_PON="$CIRCUSNV_HOME/MNV_PoN_No_overlap_new.txt"
 SBU=$(echo "scale=2; 1 / $SB" | bc)
 
 echo -e "\nSettings: \nInput bam(s): $Inputbam\nReference: $Reference\nPanel: $Listregions\nMinimum VAF: $VAF\nMinimum Read Depth: $RDP\nMinimum Base Quality: $Qual\nMinimum Overlapping Calls: $Calls\nPoN: $PoN\nStrand Bias: $SB\nMultiNucleotide Variant Calling: $MNV\nBayesian Prior for MNV calling: $PRIOR\nCrosslink Table: $CrosslinkTable\nMatched Control Logic: $Matched\nUNMET & repeat filtering: $UNMET\nMain output directory: $OutputDir"
@@ -162,7 +195,7 @@ unmet_filter() {
   # 1) Make sure the UNMET.bed exists
   if [[ ! -f "$bed_file" ]]; then
     echo "UNMET is true and $bed_file not found — downloading + converting…"
-    wget -q "http://web16.kazusa.or.jp/data/hg38/$(basename "$tmp_bed_tdf")"
+    wget -q -O "$tmp_bed_tdf" "http://web16.kazusa.or.jp/data/hg38/$(basename "$tmp_bed_tdf")"
     (
       module load IGV
       igvtools tdftobedgraph "$tmp_bed_tdf" "$bed_file" 2>/dev/null
@@ -520,7 +553,7 @@ Sinvict() { #1: Input .bam file    #2: Output folder
   
   (
     module load SAMtools/1.19.2-GCCcore-11.3.0
-    pythonscript ./scripts/sinvict_to_vcf2.py $2/calls_level1.sinvict $2${base_name}_SiNVICT_inter.vcf $Reference
+    pythonscript "$CIRCUSNV_HOME"/scripts/sinvict_to_vcf2.py $2/calls_level1.sinvict $2${base_name}_SiNVICT_inter.vcf $Reference
   )
 
   (
@@ -564,15 +597,15 @@ generate_mnv_input() {
     #isec to merge into one list --> now with 1 tools. 
     bcftools isec -p $mnvpath -O z -n +1 $mnvpath/SiNVICT_MNV.vcf.gz $mnvpath/Mutect2_MNV.vcf.gz $mnvpath/LoFreq_MNV.vcf.gz $mnvpath/VarDict_MNV.vcf.gz
     #Merge sites with data: --> sites2.txt
-    pythonscript ./scripts/merge_variants.py $samplename "phased" --infile "sites.txt" --outfile "sites2.txt" $OutputDir
+    pythonscript "$CIRCUSNV_HOME"/scripts/merge_variants.py $samplename "phased" --infile "sites.txt" --outfile "sites2.txt" $OutputDir
     
     #### MNV Filtering on UNMET score ###
     if [[ "$UNMET" == "true" ]]; then
-      unmet_filter "$samplename" "$mnvpath/sites2.txt" "./hg38_genome.UNMET_bin10bp.bed" 0.90 "MNV input -- UNMET filtering"
+      unmet_filter "$samplename" "$mnvpath/sites2.txt" "$UNMET_BED" 0.90 "MNV input -- UNMET filtering"
     fi  
     
     #convert to vcf
-    pythonscript ./scripts/isec_to_vcf.py $mnvpath/sites2.txt $mnvpath/sites.vcf 'TRUE'
+    pythonscript "$CIRCUSNV_HOME"/scripts/isec_to_vcf.py $mnvpath/sites2.txt $mnvpath/sites.vcf 'TRUE'
     bgzip -c $mnvpath/sites.vcf > $mnvpath/sites.vcf.gz && bcftools index $mnvpath/sites.vcf.gz
     echo "MNV input: merging 4 tools to 1 list DONE --> sites.vcf" 
   )
@@ -583,8 +616,8 @@ mnv_calling() {
   local samplename=$1
   local crosslink_table=$2
   
-  mnvista_cmd="./MNVista $bam_file $OutputDir/$samplename/mnvcalling/sites.vcf $OutputDir/$samplename/mnvcalling/results -T 15 -M 6 -R 150 -F 0 -J 0"
-  [ -n "$PoN" ] && mnvista_cmd+=" -C './MNV_PoN_No_overlap_new.txt'"
+  mnvista_cmd="$MNVISTA $bam_file $OutputDir/$samplename/mnvcalling/sites.vcf $OutputDir/$samplename/mnvcalling/results -T 15 -M 6 -R 150 -F 0 -J 0"
+  [ -n "$PoN" ] && mnvista_cmd+=" -C '$MNV_PON'"
   
   if [ -n "$crosslink_table" ]; then
     echo "MNV input: Crosslink table provided: $crosslink_table"
@@ -630,7 +663,7 @@ mnv_calling() {
             matched_output="$OutputDir/$samplename/mnvcalling/results/matched_control"
             mkdir -p "$matched_output"
             if [[ -f "$ctrl" ]]; then
-              ./MNVista "$ctrl" "$OutputDir/$samplename/mnvcalling/results/results.vcf" "$matched_output" -T 12 -M 6 -R 100 -F 0 -J 0 -S 10 -N 3 -B 0.95 -P $PRIOR -K true
+              "$MNVISTA" "$ctrl" "$OutputDir/$samplename/mnvcalling/results/results.vcf" "$matched_output" -T 12 -M 6 -R 100 -F 0 -J 0 -S 10 -N 3 -B 0.95 -P $PRIOR -K true
             else
               echo "WARNING: matched control BAM not found: $ctrl — skipping MNVista"
             fi
@@ -670,7 +703,7 @@ then
 else
   # If PoN Argument is given:
   echo -e "\nPoN argument is given!!\n"
-  mkdir -p ./PoN/
+  mkdir -p $PON_DIR/
   
   
   #Directory PoN with containing samples:
@@ -684,8 +717,8 @@ else
       bam_index=(${bam_dir}/${samplename}*.bai)
       
       echo -e "\n\nGenerating VCF for normal control: $samplename"
-      mkdir ./PoN/$samplename/
-      mkdir -p ./PoN/$samplename/mnvcalling
+      mkdir $PON_DIR/$samplename/
+      mkdir -p $PON_DIR/$samplename/mnvcalling
       
       # Check if BAM index file exists, if not create it
       if [ ! -e "${bam_index[0]}" ]; then
@@ -699,61 +732,61 @@ else
         touch $bam_index
       fi
 
-      Vardict $healthycontrol ./PoN/$samplename/ & Mutect2 $healthycontrol ./PoN/$samplename/ & Lofreq $healthycontrol ./PoN/$samplename/ & Sinvict $healthycontrol ./PoN/$samplename/
+      Vardict $healthycontrol $PON_DIR/$samplename/ & Mutect2 $healthycontrol $PON_DIR/$samplename/ & Lofreq $healthycontrol $PON_DIR/$samplename/ & Sinvict $healthycontrol $PON_DIR/$samplename/
       wait
     done
     
     echo -e "\nMerging outputs for PoN..."
     #Merge per tool -> 4 seperate blacklists as .vcf file
-    ls ./PoN/*/*Mutect2.vcf.gz | sed 's/^/ /' > ./PoN/Mutect2-normals.dat & ls ./PoN/*/*VarDict.vcf.gz | sed 's/^/ /' > ./PoN/VarDict-normals.dat & \
-    ls ./PoN/*/*LoFreq.vcf.gz | sed 's/^/ /' > ./PoN/LoFreq-normals.dat & ls ./PoN/*/*SiNVICT.vcf.gz | sed 's/^/ /' > ./PoN/SiNVICT-normals.dat
+    ls $PON_DIR/*/*Mutect2.vcf.gz | sed 's/^/ /' > $PON_DIR/Mutect2-normals.dat & ls $PON_DIR/*/*VarDict.vcf.gz | sed 's/^/ /' > $PON_DIR/VarDict-normals.dat & \
+    ls $PON_DIR/*/*LoFreq.vcf.gz | sed 's/^/ /' > $PON_DIR/LoFreq-normals.dat & ls $PON_DIR/*/*SiNVICT.vcf.gz | sed 's/^/ /' > $PON_DIR/SiNVICT-normals.dat
     (
       module load BCFtools/1.19-GCCcore-11.3.0
-      xargs -a ./PoN/Mutect2-normals.dat bcftools isec -o ./PoN/PoN_Mutect2.txt -O v -n +1 && xargs -a ./PoN/VarDict-normals.dat bcftools isec -o ./PoN/PoN_Vardict.txt -O v -n +1 && \
-      xargs -a ./PoN/LoFreq-normals.dat bcftools isec -o ./PoN/PoN_Lofreq.txt -O v -n +1 && xargs -a ./PoN/SiNVICT-normals.dat bcftools isec -o ./PoN/PoN_Sinvict.txt -O v -n +1
+      xargs -a $PON_DIR/Mutect2-normals.dat bcftools isec -o $PON_DIR/PoN_Mutect2.txt -O v -n +1 && xargs -a $PON_DIR/VarDict-normals.dat bcftools isec -o $PON_DIR/PoN_Vardict.txt -O v -n +1 && \
+      xargs -a $PON_DIR/LoFreq-normals.dat bcftools isec -o $PON_DIR/PoN_Lofreq.txt -O v -n +1 && xargs -a $PON_DIR/SiNVICT-normals.dat bcftools isec -o $PON_DIR/PoN_Sinvict.txt -O v -n +1
     )
     
-    pythonscript ./scripts/isec_to_vcf.py ./PoN/PoN_Mutect2.txt ./PoN/PoN_Mutect2.vcf 'FALSE' && pythonscript ./scripts/isec_to_vcf.py ./PoN/PoN_Vardict.txt ./PoN/PoN_Vardict.vcf 'FALSE' && \
-    pythonscript ./scripts/isec_to_vcf.py ./PoN/PoN_Lofreq.txt ./PoN/PoN_Lofreq.vcf 'FALSE' && pythonscript ./scripts/isec_to_vcf.py ./PoN/PoN_Sinvict.txt ./PoN/PoN_Sinvict.vcf 'FALSE'
+    pythonscript "$CIRCUSNV_HOME"/scripts/isec_to_vcf.py $PON_DIR/PoN_Mutect2.txt $PON_DIR/PoN_Mutect2.vcf 'FALSE' && pythonscript "$CIRCUSNV_HOME"/scripts/isec_to_vcf.py $PON_DIR/PoN_Vardict.txt $PON_DIR/PoN_Vardict.vcf 'FALSE' && \
+    pythonscript "$CIRCUSNV_HOME"/scripts/isec_to_vcf.py $PON_DIR/PoN_Lofreq.txt $PON_DIR/PoN_Lofreq.vcf 'FALSE' && pythonscript "$CIRCUSNV_HOME"/scripts/isec_to_vcf.py $PON_DIR/PoN_Sinvict.txt $PON_DIR/PoN_Sinvict.vcf 'FALSE'
     
     (
       #zipping and indexing Pon-per-tool blacklists for filtering later on;
       load_modules
-      bgzip -c ./PoN/PoN_Mutect2.vcf > ./PoN/PoN_Mutect2.vcf.gz && bgzip -c ./PoN/PoN_Vardict.vcf > ./PoN/PoN_Vardict.vcf.gz && \
-      bgzip -c ./PoN/PoN_Lofreq.vcf > ./PoN/PoN_Lofreq.vcf.gz && bgzip -c ./PoN/PoN_Sinvict.vcf > ./PoN/PoN_Sinvict.vcf.gz
+      bgzip -c $PON_DIR/PoN_Mutect2.vcf > $PON_DIR/PoN_Mutect2.vcf.gz && bgzip -c $PON_DIR/PoN_Vardict.vcf > $PON_DIR/PoN_Vardict.vcf.gz && \
+      bgzip -c $PON_DIR/PoN_Lofreq.vcf > $PON_DIR/PoN_Lofreq.vcf.gz && bgzip -c $PON_DIR/PoN_Sinvict.vcf > $PON_DIR/PoN_Sinvict.vcf.gz
 
-      bcftools index ./PoN/PoN_Mutect2.vcf.gz && bcftools index ./PoN/PoN_Vardict.vcf.gz && bcftools index ./PoN/PoN_Lofreq.vcf.gz && bcftools index ./PoN/PoN_Sinvict.vcf.gz
+      bcftools index $PON_DIR/PoN_Mutect2.vcf.gz && bcftools index $PON_DIR/PoN_Vardict.vcf.gz && bcftools index $PON_DIR/PoN_Lofreq.vcf.gz && bcftools index $PON_DIR/PoN_Sinvict.vcf.gz
       #We now have 4 PoNs, 1 per tool
       
       #Merging into 1 final blacklist...
-      bcftools isec -o ./PoN/BLACKLIST_combined.txt -O v -n +2 ./PoN/PoN_Sinvict.vcf.gz ./PoN/PoN_Mutect2.vcf.gz ./PoN/PoN_Lofreq.vcf.gz ./PoN/PoN_Vardict.vcf.gz
+      bcftools isec -o $PON_DIR/BLACKLIST_combined.txt -O v -n +2 $PON_DIR/PoN_Sinvict.vcf.gz $PON_DIR/PoN_Mutect2.vcf.gz $PON_DIR/PoN_Lofreq.vcf.gz $PON_DIR/PoN_Vardict.vcf.gz
     )
       
       #Add mutations from each tool list (N=4) that occur in over 50% of normal samples, to BLACKLIST_combined.txt 
       # Meaning: Inspect PoN_Vardict.txt etc etc, add high-occurance mutations that are not already present in BLACKLIST_combined.txt to BLACKLIST_combined.txt and re-sort.  
       echo -e "Adding mutations to PoN that are found in 20% of normals, but only called with one tool \n$PoN \n"
-      pythonscript ./scripts/finish_pon.py 20 ./PoN/
+      pythonscript "$CIRCUSNV_HOME"/scripts/finish_pon.py 20 $PON_DIR/
 
-      pythonscript ./scripts/isec_to_vcf.py ./PoN/BLACKLIST_combined_complete.txt ./PoN/BLACKLIST_combined.vcf 'FALSE' && \
+      pythonscript "$CIRCUSNV_HOME"/scripts/isec_to_vcf.py $PON_DIR/BLACKLIST_combined_complete.txt $PON_DIR/BLACKLIST_combined.vcf 'FALSE' && \
       
     (
       load_modules
-      bgzip -c ./PoN/BLACKLIST_combined.vcf > ./PoN/BLACKLIST_combined.vcf.gz
-      bcftools index ./PoN/BLACKLIST_combined.vcf.gz 
+      bgzip -c $PON_DIR/BLACKLIST_combined.vcf > $PON_DIR/BLACKLIST_combined.vcf.gz
+      bcftools index $PON_DIR/BLACKLIST_combined.vcf.gz 
     ) 
     echo -e "PoN generation is finished! On to the tumor samples... \n"   
   
   #One-File: a.k.a pre-made blacklist:      
   elif [[ -f $PoN ]]; then
     echo -e "PoN is given as pre-made blacklist: \n$PoN \n"
-    cp $PoN ./PoN/BLACKLIST_combined_complete.txt
+    cp $PoN $PON_DIR/BLACKLIST_combined_complete.txt
     
-    pythonscript ./scripts/isec_to_vcf.py ./PoN/BLACKLIST_combined_complete.txt ./PoN/BLACKLIST_combined.vcf 'FALSE' && \
+    pythonscript "$CIRCUSNV_HOME"/scripts/isec_to_vcf.py $PON_DIR/BLACKLIST_combined_complete.txt $PON_DIR/BLACKLIST_combined.vcf 'FALSE' && \
       
     (
       load_modules
-      bgzip -c ./PoN/BLACKLIST_combined.vcf > ./PoN/BLACKLIST_combined.vcf.gz
-      bcftools index ./PoN/BLACKLIST_combined.vcf.gz 
+      bgzip -c $PON_DIR/BLACKLIST_combined.vcf > $PON_DIR/BLACKLIST_combined.vcf.gz
+      bcftools index $PON_DIR/BLACKLIST_combined.vcf.gz 
     ) 
     echo -e "PoN preparation is finished! On to the tumor samples... \n"   
 
@@ -903,29 +936,29 @@ run_tumor_sample() {
     #Combine 4 tools' output into one textfile using intersect
     bcftools isec -p $OutputDir/$samplename/isec -O z -n +$Calls $OutputDir/$samplename/*_SiNVICT.vcf.gz $OutputDir/$samplename/*_Mutect2.vcf.gz $OutputDir/$samplename/*_LoFreq.vcf.gz $OutputDir/$samplename/*_VarDict.vcf.gz
     #Convert to vcf, zip and index
-    pythonscript ./scripts/isec_to_vcf.py $OutputDir/$samplename/isec/sites.txt $OutputDir/$samplename/isec/sites.vcf 'FALSE'
+    pythonscript "$CIRCUSNV_HOME"/scripts/isec_to_vcf.py $OutputDir/$samplename/isec/sites.txt $OutputDir/$samplename/isec/sites.vcf 'FALSE'
     bgzip -c $OutputDir/$samplename/isec/sites.vcf > $OutputDir/$samplename/isec/sites.vcf.gz && bcftools index $OutputDir/$samplename/isec/sites.vcf.gz
     #PoN filtering (or not)
     if [ -z "$PoN" ]; then
       echo -e "No PoN argument given, proceeding with intersect results..."
       echo "Adding mutation metrics back to merged mutation list"
-      pythonscript ./scripts/merge_variants.py $samplename "no_pon" $OutputDir
+      pythonscript "$CIRCUSNV_HOME"/scripts/merge_variants.py $samplename "no_pon" $OutputDir
     else
       #Filter combined list with combined blacklist:
       echo -e "PoN argument given, filtering intersect results with PoN..."
-      bcftools isec -p $OutputDir/$samplename/isec/PoN-filtered -O v -n~10 $OutputDir/$samplename/isec/sites.vcf.gz ./PoN/BLACKLIST_combined.vcf.gz
+      bcftools isec -p $OutputDir/$samplename/isec/PoN-filtered -O v -n~10 $OutputDir/$samplename/isec/sites.vcf.gz $PON_DIR/BLACKLIST_combined.vcf.gz
       
       # Check if variants are left after PoN Filtering ##########################################      
       
       #Add VAF/RD/MRD data to the merged list:
       echo "Adding mutation metrics back to pon-filtered merged mutation list"
-      pythonscript ./scripts/merge_variants.py $samplename "pon" $OutputDir
+      pythonscript "$CIRCUSNV_HOME"/scripts/merge_variants.py $samplename "pon" $OutputDir
     fi
   )  
   
   #### Filtering on UNMET score ###
   if [[ "$UNMET" == "true" ]]; then
-    unmet_filter "$samplename" "$OutputDir/$samplename/merged_vcfs.txt" "./hg38_genome.UNMET_bin10bp.bed" 0.90 "UNMET filtering"
+    unmet_filter "$samplename" "$OutputDir/$samplename/merged_vcfs.txt" "$UNMET_BED" 0.90 "UNMET filtering"
   fi
 
   #MNVCalling
@@ -948,7 +981,7 @@ run_tumor_sample() {
     
   #Filtering annotated output
   echo "Post filtering based on functional effect and public SNP databases..." 
-  pythonscript ./scripts/post_filtering.py $samplename $OutputDir $UNMET
+  pythonscript "$CIRCUSNV_HOME"/scripts/post_filtering.py $samplename $OutputDir $UNMET
     
   #Annotating again if there are mutations left:
   MUTS=$(awk '{ FS="\t" } END { print $2 }' $OutputDir/$samplename/filtering_info.txt)
