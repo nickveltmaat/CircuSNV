@@ -57,16 +57,45 @@ validate_args
 # Upper bound of the strand-bias window (two decimals, as before)
 SBU=$(echo "scale=2; 1 / $SB" | bc)
 
+print_settings() {
+  echo -e "
+CircuSNV $(circusnv_version)
+Installation: $CIRCUSNV_HOME
+Threads: $THREADS"
+  echo -e "
+Settings: 
+Input bam(s): $Inputbam
+Reference: $Reference
+Panel: $Listregions
+Minimum VAF: $VAF
+Minimum Read Depth: $RDP
+Minimum Base Quality: $Qual
+Minimum Overlapping Calls: $Calls
+PoN: $PoN
+Strand Bias: $SB
+MultiNucleotide Variant Calling: $MNV
+Bayesian Prior for MNV calling: $PRIOR
+Crosslink Table: $CrosslinkTable
+Matched Control Logic: $Matched
+UNMET & repeat filtering: $UNMET
+Main output directory: $OutputDir"
+}
+
 if [[ "$SKIP_CHECKS" != "true" ]]; then
   run_checks
+fi
+
+if [[ "$DRY_RUN" == "true" ]]; then
+  print_settings
+  print_run_plan
+  exit 0
 fi
 
 mkdir -p "$OutputDir"
 start_run_log
 trap finish_run_log EXIT
 
-echo -e "\nCircuSNV $(circusnv_version)\nInstallation: $CIRCUSNV_HOME\nThreads: $THREADS"
-echo -e "\nSettings: \nInput bam(s): $Inputbam\nReference: $Reference\nPanel: $Listregions\nMinimum VAF: $VAF\nMinimum Read Depth: $RDP\nMinimum Base Quality: $Qual\nMinimum Overlapping Calls: $Calls\nPoN: $PoN\nStrand Bias: $SB\nMultiNucleotide Variant Calling: $MNV\nBayesian Prior for MNV calling: $PRIOR\nCrosslink Table: $CrosslinkTable\nMatched Control Logic: $Matched\nUNMET & repeat filtering: $UNMET\nMain output directory: $OutputDir"
+print_settings
 
 log "Panel of normals"
 prepare_pon

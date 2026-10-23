@@ -23,6 +23,7 @@ set_default_options() {
   Inputbam=""
   CONFIG_FILE=""
   SKIP_CHECKS="false"
+  DRY_RUN="false"
   # Number of threads: from SLURM_CPUS_PER_TASK when running under Slurm
   THREADS=${SLURM_CPUS_PER_TASK:-12}
 }
@@ -74,6 +75,7 @@ Run:
       --threads INT            threads per tool (default: SLURM_CPUS_PER_TASK, else 12)
       --config FILE            settings file, see config/circusnv.example.conf
       --skip-checks            do not check inputs, modules and tools before starting
+      --dry-run                check everything and show what would be run, then stop
   -h, --help                  show this help and exit
       --version                show the version and exit
 
@@ -131,6 +133,7 @@ parse_args() {
       -h|--help) print_help; exit 0;;
       --version) echo "CircuSNV $(circusnv_version)"; exit 0;;
       --skip-checks) SKIP_CHECKS="true"; shift; continue;;
+      --dry-run) DRY_RUN="true"; shift; continue;;
       -I|--input|-R|--reference|-L|--regions|-V|--min-vaf|-D|--min-depth|-C|--min-callers|\
       -P|--pon|-Q|--min-base-quality|-M|--min-alt-reads|-S|--strand-bias|-H|--mnv|\
       -B|--mnv-prior|-X|--crosslink-table|-T|--matched-control|-U|--unmet|-O|--output|\

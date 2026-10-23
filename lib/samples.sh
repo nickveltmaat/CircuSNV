@@ -137,53 +137,95 @@ run_tumor_sample() {
   echo -e "DONE analyzing $samplename!!\n\n\n"
 }
 
-# Process every sample: a single BAM, all BAMs in a directory, or (with a crosslink table)
-# the baselines first and then the follow-ups.
-run_samples() {
+# Print the sample names from the crosslink table in processing order: the baselines first,
+# then the follow-ups (each deduplicated, first occurrence kept; controls are not processed).
+crosslink_sample_order() {
+  awk -F $'\t' 'NR>1 && $2=="baseline" && !seen[$1]++{print $1}' "$CrosslinkTable"
+  awk -F $'\t' 'NR>1 && $2=="follow-up" && !seen[$1]++{print $1}' "$CrosslinkTable"
+}
+
+# Print the BAM files to process, one per line, in processing order: a single BAM, all BAMs
+# in a directory, or (with a crosslink table) the baselines first and then the follow-ups.
+list_sample_bams() {
   local s bam
-  local baselines=() follows=() samples=()
+  if [[ -d "$Inputbam" ]]; then
+    if [[ -n "${CrosslinkTable:-}" && -f "$CrosslinkTable" ]]; then
+      while IFS= read -r s; do
+        echo "$Inputbam/${s}.bam"
+      done < <(crosslink_sample_order)
+    else
+      for bam in "$Inputbam"/*.bam; do
+        echo "$bam"
+      done
+    fi
+  elif [[ -f "$Inputbam" ]]; then
+    echo "$Inputbam"
+  fi
+}
+
+# Process every sample in order.
+run_samples() {
+  local bam
+  local bams=()
 
   mkdir -p "$OutputDir"
 
   if [[ -d "$Inputbam" ]]; then
     if [[ -n "${CrosslinkTable:-}" && -f "$CrosslinkTable" ]]; then
       echo "Using CrosslinkTable: processing baselines --> follow-ups (controls ignored)"
-
-      # Baselines (col1 where col2=="baseline"), deduplicated, first occurrence kept
-      mapfile -t baselines < <(
-        awk -F $'\t' 'NR>1 && $2=="baseline" && !seen[$1]++{print $1}' "$CrosslinkTable"
-      )
-
-      # Follow-ups (col1 where col2=="follow-up"), deduplicated, first occurrence kept
-      mapfile -t follows < <(
-        awk -F $'\t' 'NR>1 && $2=="follow-up" && !seen[$1]++{print $1}' "$CrosslinkTable"
-      )
-
-      samples=( "${baselines[@]}" "${follows[@]}" )
-
-      if [[ ${#samples[@]} -eq 0 ]]; then
-        echo "Warning: no baseline or follow-up samples found in '$CrosslinkTable'"
-      else
-        echo -e "\nSamples order ="
-        printf '%s\n' "${samples[@]}"
-        for s in "${samples[@]}"; do
-          run_tumor_sample "$Inputbam/${s}.bam"
-        done
-      fi
-
     else
-      # No table: process all BAMs in the directory
       echo "No CrosslinkTable: processing all BAMs in '$Inputbam'"
-      for bam in "$Inputbam"/*.bam; do
-        run_tumor_sample "$bam"
-      done
     fi
-
-  elif [[ -f "$Inputbam" ]]; then
-    # Input is a single BAM file
-    run_tumor_sample "$Inputbam"
-  else
+  elif [[ ! -f "$Inputbam" ]]; then
     echo "Invalid Inputbam: $Inputbam" >&2
     usage
   fi
+
+  mapfile -t bams < <(list_sample_bams)
+
+  if [[ ${#bams[@]} -eq 0 ]]; then
+    echo "Warning: no samples to process"
+    return 0
+  fi
+  if [[ -n "${CrosslinkTable:-}" && -f "$CrosslinkTable" && -d "$Inputbam" ]]; then
+    echo -e "\nSamples order ="
+    crosslink_sample_order
+  fi
+
+  for bam in "${bams[@]}"; do
+    run_tumor_sample "$bam"
+  done
+}
+
+# Describe what a run would do, without writing anything (--dry-run).
+print_run_plan() {
+  local bams=() bam n=0 steps
+
+  mapfile -t bams < <(list_sample_bams)
+
+  echo -e "\nDry run: nothing is written and no tool is started.\n"
+  echo "Output directory: $OutputDir"
+  if [[ -z "$PoN" ]]; then
+    echo "Panel of normals: none"
+  elif [[ -d "$PoN" ]]; then
+    echo "Panel of normals: generate from $(compgen -G "$PoN/*.bam" | wc -l) normal BAM(s) in $PoN, work directory $PON_DIR"
+  else
+    echo "Panel of normals: pre-made blacklist $PoN, work directory $PON_DIR"
+  fi
+
+  echo -e "\nSamples (${#bams[@]}), in processing order:"
+  for bam in "${bams[@]}"; do
+    n=$((n + 1))
+    echo "  $n. $(basename "$bam" .bam)  ($bam)"
+  done
+
+  steps="VarDict + Mutect2 + LoFreq + SiNVICT in parallel ($THREADS threads each)"
+  steps+=" -> merge (called by >= $Calls tool(s))"
+  [[ -n "$PoN" ]] && steps+=" -> PoN filter"
+  [[ "$UNMET" == "true" ]] && steps+=" -> UNMET filter (< $UNMET_THRESHOLD)"
+  [[ "$MNV" == "true" ]] && steps+=" -> MNV calling (MNVista)"
+  steps+=" -> annotation (OpenCRAVAT) -> post-filtering"
+  [[ "${Matched,,}" == "true" ]] && steps+=" -> matched-control read counts"
+  steps+=" -> final annotation"
+  echo -e "\nSteps per sample:\n  $steps"
 }
