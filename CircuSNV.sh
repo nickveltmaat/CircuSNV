@@ -56,6 +56,7 @@ done
 apply_default_config
 parse_args "$@"
 check_required_args
+normalize_args
 
 SBU=$(echo "scale=2; 1 / $SB" | bc)
 

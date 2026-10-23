@@ -4,9 +4,9 @@
 
 # Function to load modules
 load_modules() {
-  module load $MODULE_ZLIB
-  module load $MODULE_HTSLIB
-  module load $MODULE_BCFTOOLS
+  module load "$MODULE_ZLIB"
+  module load "$MODULE_HTSLIB"
+  module load "$MODULE_BCFTOOLS"
 }
 
 # Function to run Python script

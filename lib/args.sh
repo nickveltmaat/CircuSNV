@@ -52,34 +52,42 @@ OutputDir="./output"
 THREADS=${SLURM_CPUS_PER_TASK:-12}
 
 parse_args() {
-###  Parsing parameters  ###
-while getopts "R:L:I:V:D:C:P:Q:M:S:H:B:X:T:U:O:h:" arg; do
-  case $arg in
-    R) Reference=$OPTARG;;      # "/groups/umcg-pmb/tmp01/apps/data/reference_sequences/Homo_sapiens_assembly38.fasta"
-    L) Listregions=$OPTARG;;    # "/groups/umcg-pmb/tmp01/projects/hematopathology/Lymphoma/Nick/2020_covered_probe_notranslocation_hg38.bed"
-    I) Inputbam=$OPTARG;;       # "/groups/umcg-pmb/tmp01/projects/hematopathology/Lymphoma/GenomeScan_SequenceData/103584/"
-    V) VAF=$OPTARG;;            # 0.004
-    D) RDP=$OPTARG;;            # 100
-    C) Calls=$OPTARG;;          # 1
-    P) PoN=$OPTARG;;            # "/groups/umcg-pmb/tmp01/projects/hematopathology/Lymphoma/GenomeScan_SequenceData/104103_normals/"
-    Q) Qual=$OPTARG;;           # BaseQuality (25)
-    M) MRD=$OPTARG;;            # Minimum reads supporting a mutation
-    S) SB=$OPTARG;;             # Strand bias. Lowest fraction of FW reads vs RV reads. (SB = 0.2 --> FW = 1, RV = 5 and vice versa)
-    H) MNV=$OPTARG;;            # if "true", apply MultiNucleotide Variant calling (detect variants in pHase)
-    B) PRIOR=$OPTARG;;          # Bayesian prior for calling MNVs with MNVista. Default 0.5 (equal odds)
-    X) CrosslinkTable=$OPTARG;; # tab separated table (.tsv file) with 'samplename', 'timepoint' and 'corresponding_baseline' columns
-    T) Matched=$OPTARG;;        # if "true", apply matched_control logic
-    U) UNMET=$OPTARG;;          # if "true", apply UNMET score to filter hard to sequence regions
-    O) OutputDir=$OPTARG;;      # Sets the path to the main directory in which the data will be outputted. 
-    h) usage;;
-    *) usage;;
-  esac
-done
+  local arg
+  while getopts "R:L:I:V:D:C:P:Q:M:S:H:B:X:T:U:O:h:" arg; do
+    case $arg in
+      R) Reference=$OPTARG;;      # reference FASTA
+      L) Listregions=$OPTARG;;    # BED file with target regions
+      I) Inputbam=$OPTARG;;       # BAM file or directory with BAM files
+      V) VAF=$OPTARG;;            # minimum VAF
+      D) RDP=$OPTARG;;            # minimum read depth
+      C) Calls=$OPTARG;;          # minimum number of callers
+      P) PoN=$OPTARG;;            # directory with normal BAMs, or a pre-made blacklist file
+      Q) Qual=$OPTARG;;           # minimum base quality
+      M) MRD=$OPTARG;;            # minimum reads supporting a mutation
+      S) SB=$OPTARG;;             # strand bias: lowest fraction of FW vs RV reads (SB = 0.2 --> FW = 1, RV = 5 and vice versa)
+      H) MNV=$OPTARG;;            # if "true", apply multi-nucleotide variant calling (variants in phase)
+      B) PRIOR=$OPTARG;;          # Bayesian prior for calling MNVs with MNVista (0.5 = equal odds)
+      X) CrosslinkTable=$OPTARG;; # TSV with 'samplename', 'timepoint', 'corresponding_baseline' (and 'matched_control') columns
+      T) Matched=$OPTARG;;        # if "true", apply matched-control logic
+      U) UNMET=$OPTARG;;          # if "true", apply UNMET score to filter hard-to-sequence regions
+      O) OutputDir=$OPTARG;;      # main output directory
+      h) usage;;
+      *) usage;;
+    esac
+  done
 }
 
-#֖ Bail out if any required flags are missing ֖#
+# Remove trailing slashes from directory arguments, so paths are built the same way everywhere.
+normalize_args() {
+  [[ "$Inputbam" != "/" ]] && Inputbam=${Inputbam%/}
+  [[ "$OutputDir" != "/" ]] && OutputDir=${OutputDir%/}
+  [[ -n "$PoN" && "$PoN" != "/" ]] && PoN=${PoN%/}
+  return 0
+}
+
+# Bail out if any required flags are missing
 check_required_args() {
-  local miss=()
+  local miss=() var
   for var in Reference Listregions Inputbam; do
     [[ -z "${!var:-}" ]] && miss+=("$var")
   done

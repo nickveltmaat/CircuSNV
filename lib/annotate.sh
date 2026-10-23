@@ -2,22 +2,27 @@
 # OpenCRAVAT annotation and matched-control read metrics.
 # Sourced by CircuSNV.sh; uses its global settings.
 
-# Function to annotate with OpenCravat
-annotate() { #1 input.txt (tab delim snv data)   #2 Output filenames    #3&#4 output 
-  echo -e "annotating $1 with OpenCravat..."
+# Annotate with OpenCRAVAT.
+# Usage: annotate <input.txt (tab-delimited variants)> <run name> <output format>...
+annotate() {
+  local input=$1
+  local name=$2
+  shift 2
+  echo -e "annotating $input with OpenCravat..."
   source "$ENV_DIR/bin/activate"
-  oc run $1 \
+  oc run "$input" \
     -l hg38 \
-    -n $2 --silent --mp $THREADS \
+    -n "$name" --silent --mp "$THREADS" \
     -a cgc cadd_exome clinpred cosmic mutation_assessor thousandgenomes gnomad3 repeat \
-    -t $3 $4
-  deactivate 
+    -t "$@"
+  deactivate
 }
 
 # Function to add reads info from matched control to each mutation found in tumor sample 
 add_matched_control_metrics() {
   local mutations="$1"
   local samplename="$2"
+  local matched_control ctrl
 
   echo "[MATCHED CTRL] Adding matched control metrics for each mutation..."
 
