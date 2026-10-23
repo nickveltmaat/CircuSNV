@@ -15,7 +15,9 @@ compared as a multiset of records, so record order does not matter:
 Volatile lines are ignored and counted: VCF '##' header lines whose key mentions a
 date or command (fileDate, *Command, GATKCommandLine, ...) and header-like lines or
 Excel rows that contain a date, a time, an absolute path or the word 'command'.
-Index files, OpenCRAVAT databases and log files are skipped (see --exclude).
+Index files, OpenCRAVAT databases, log files, the README.txt that 'bcftools isec'
+writes (it only records the command line) and the run log directory '.circusnv/' are
+skipped (see --exclude).
 
 The report contains counts only. Sample directory names are masked as S1, S2, ...
 unless --no-mask is given, so the report can be shared without identifiers.
@@ -32,7 +34,8 @@ import os
 import re
 import sys
 
-DEFAULT_EXCLUDES = ['*.csi', '*.tbi', '*.bai', '*.crai', '*.sqlite', '*.log', '*.err', '*.png']
+DEFAULT_EXCLUDES = ['*.csi', '*.tbi', '*.bai', '*.crai', '*.sqlite', '*.log', '*.err', '*.png',
+                    'README.txt', '.circusnv/*']
 
 CALLER_RE = re.compile(r'_(VarDict|Mutect2|LoFreq|SiNVICT)(?:_RAW)?\.vcf')
 VOLATILE_KEY_RE = re.compile(r'date|command|cmdline', re.IGNORECASE)
@@ -84,7 +87,9 @@ def list_files(root):
 
 
 def top_level_dirs(root):
-    return {name for name in os.listdir(root) if os.path.isdir(os.path.join(root, name))}
+    """Sample directories: every top-level directory except hidden ones such as '.circusnv'."""
+    return {name for name in os.listdir(root)
+            if os.path.isdir(os.path.join(root, name)) and not name.startswith('.')}
 
 
 class Masker(object):
