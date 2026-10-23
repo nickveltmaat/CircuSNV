@@ -134,7 +134,74 @@ run_tumor_sample() {
   mv "$sample_dir/filtering_info.txt" "$sample_dir/filtering-info/" && mv "$sample_dir/removed_variants.xlsx" "$sample_dir/filtering-info/"
   mv "$sample_dir/"merged* "$sample_dir/intermediate-files/" && mv "$sample_dir/"Final_list* "$sample_dir/final-list/"
 
+  if [[ "$CLEANUP" == "true" ]]; then
+    cleanup_sample_intermediates "$sample_dir"
+  fi
+  mark_sample_done "$samplename"
+
   echo -e "DONE analyzing $samplename!!\n\n\n"
+}
+
+# --cleanup: remove intermediate files that later steps and samples no longer need. Kept:
+# the per-tool VCFs, intermediate-files/, filtering-info/, final-list/ and mnvcalling/results/
+# (follow-up samples read their baseline's results.vcf).
+cleanup_sample_intermediates() {
+  local sample_dir=$1
+  echo "Removing intermediate files (--cleanup): $sample_dir/isec, $sample_dir/mnvcalling (except results/)"
+  rm -rf "$sample_dir/isec"
+  if [[ -d "$sample_dir/mnvcalling" ]]; then
+    find "$sample_dir/mnvcalling" -mindepth 1 -maxdepth 1 ! -name results -exec rm -rf {} +
+  fi
+}
+
+# A sample counts as finished once this marker exists; --resume skips finished samples.
+sample_done_marker() {
+  echo "$(run_state_dir)/done/$1"
+}
+
+mark_sample_done() {
+  mkdir -p "$(run_state_dir)/done"
+  date '+%Y-%m-%d %H:%M:%S' > "$(sample_done_marker "$1")"
+}
+
+# Print the state of a sample's output: 'new', 'done' or 'incomplete'.
+sample_state() {
+  local name=$1
+  if [[ -f "$(sample_done_marker "$name")" ]]; then
+    echo "done"
+  elif [[ -d "$OutputDir/$name" ]]; then
+    echo "incomplete"
+  else
+    echo "new"
+  fi
+}
+
+# Without --resume, refuse to write into sample directories left by an earlier run: mixing
+# old and new files would give misleading results.
+check_existing_output() {
+  local bam name state
+  local found=()
+  [[ "$RESUME" == "true" ]] && return 0
+  while IFS= read -r bam; do
+    name=$(basename "$bam" .bam)
+    state=$(sample_state "$name")
+    [[ "$state" == "new" ]] || found+=("$name ($state)")
+  done < <(list_sample_bams)
+  if (( ${#found[@]} )); then
+    echo "ERROR: the output directory already has results for: ${found[*]}" >&2
+    echo "Use --resume to skip finished samples and redo unfinished ones, or choose another -O/--output." >&2
+    exit 1
+  fi
+}
+
+# --resume: move the output of an unfinished sample out of the way before it is run again.
+set_aside_incomplete_sample() {
+  local name=$1
+  local target
+  target="$(run_state_dir)/incomplete/${name}_$(date '+%Y%m%d_%H%M%S')"
+  mkdir -p "$(run_state_dir)/incomplete"
+  mv "$OutputDir/$name" "$target"
+  echo "Unfinished output of $name from an earlier run moved to $target"
 }
 
 # Print the sample names from the crosslink table in processing order: the baselines first,
@@ -192,7 +259,20 @@ run_samples() {
     crosslink_sample_order
   fi
 
+  local name
   for bam in "${bams[@]}"; do
+    if [[ "$RESUME" == "true" ]]; then
+      name=$(basename "$bam" .bam)
+      case "$(sample_state "$name")" in
+        done)
+          echo "Skipping $name: finished in an earlier run (--resume)"
+          continue
+          ;;
+        incomplete)
+          set_aside_incomplete_sample "$name"
+          ;;
+      esac
+    fi
     run_tumor_sample "$bam"
   done
 }
@@ -214,10 +294,22 @@ print_run_plan() {
   fi
 
   echo -e "\nSamples (${#bams[@]}), in processing order:"
+  local name state note
   for bam in "${bams[@]}"; do
     n=$((n + 1))
-    echo "  $n. $(basename "$bam" .bam)  ($bam)"
+    name=$(basename "$bam" .bam)
+    state=$(sample_state "$name")
+    note=""
+    if [[ "$RESUME" == "true" && "$state" == "done" ]]; then
+      note="  [finished earlier: skipped]"
+    elif [[ "$RESUME" == "true" && "$state" == "incomplete" ]]; then
+      note="  [unfinished earlier: set aside and run again]"
+    elif [[ "$state" != "new" ]]; then
+      note="  [output exists: the real run stops unless --resume is given]"
+    fi
+    echo "  $n. $name  ($bam)$note"
   done
+  [[ "$CLEANUP" == "true" ]] && echo -e "\nIntermediate files are removed after each sample (--cleanup)."
 
   steps="VarDict + Mutect2 + LoFreq + SiNVICT in parallel ($THREADS threads each)"
   steps+=" -> merge (called by >= $Calls tool(s))"

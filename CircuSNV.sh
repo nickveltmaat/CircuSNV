@@ -91,6 +91,8 @@ if [[ "$DRY_RUN" == "true" ]]; then
   exit 0
 fi
 
+check_existing_output
+
 mkdir -p "$OutputDir"
 start_run_log
 trap finish_run_log EXIT

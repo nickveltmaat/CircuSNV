@@ -24,6 +24,8 @@ set_default_options() {
   CONFIG_FILE=""
   SKIP_CHECKS="false"
   DRY_RUN="false"
+  RESUME="false"
+  CLEANUP="false"
   # Number of threads: from SLURM_CPUS_PER_TASK when running under Slurm
   THREADS=${SLURM_CPUS_PER_TASK:-12}
 }
@@ -76,6 +78,10 @@ Run:
       --config FILE            settings file, see config/circusnv.example.conf
       --skip-checks            do not check inputs, modules and tools before starting
       --dry-run                check everything and show what would be run, then stop
+      --resume                 skip samples finished in an earlier run into the same
+                               output directory, and redo unfinished ones
+      --cleanup                remove intermediate files (isec/, mnvcalling/ except
+                               results/) after each finished sample
   -h, --help                  show this help and exit
       --version                show the version and exit
 
@@ -134,6 +140,8 @@ parse_args() {
       --version) echo "CircuSNV $(circusnv_version)"; exit 0;;
       --skip-checks) SKIP_CHECKS="true"; shift; continue;;
       --dry-run) DRY_RUN="true"; shift; continue;;
+      --resume) RESUME="true"; shift; continue;;
+      --cleanup) CLEANUP="true"; shift; continue;;
       -I|--input|-R|--reference|-L|--regions|-V|--min-vaf|-D|--min-depth|-C|--min-callers|\
       -P|--pon|-Q|--min-base-quality|-M|--min-alt-reads|-S|--strand-bias|-H|--mnv|\
       -B|--mnv-prior|-X|--crosslink-table|-T|--matched-control|-U|--unmet|-O|--output|\
