@@ -2,6 +2,16 @@
 # Multi-nucleotide variant (MNV) input generation and MNVista calls.
 # Sourced by CircuSNV.sh; uses its global settings.
 
+# Normalize and atomize one tool's unfiltered VCF for MNV calling; keeps the plain VCF and
+# writes a compressed, indexed copy next to it.
+# Usage: normalize_for_mnv <output.vcf> <input.vcf.gz>
+normalize_for_mnv() {
+  local output_vcf=$1
+  shift
+  bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$@" 2>/dev/null | bcftools norm -d all > "$output_vcf" 2>/dev/null
+  bgzip -c "$output_vcf" > "$output_vcf.gz" && bcftools index -f "$output_vcf.gz"
+}
+
 # Build mnvcalling/sites.vcf for one sample from the unfiltered per-tool VCFs.
 # Usage: generate_mnv_input <samplename>
 generate_mnv_input() {
@@ -14,15 +24,15 @@ generate_mnv_input() {
     echo 'MNV input: normalizing, atomizing, zipping and indexing 4 inputs for MNV analysis --> merging into one list'
     bgzip -c "$mnvpath/"*_M2_F2stats.vcf > "$mnvpath/${samplename}_M2_F2stats.vcf.gz" && bcftools index -f "$mnvpath/${samplename}_M2_F2stats.vcf.gz"
 
-    bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$mnvpath/"*VarDict_inter.vcf.gz 2>/dev/null | bcftools norm -d all > "$mnvpath/VarDict_MNV.vcf" 2>/dev/null
-    bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$mnvpath/"*M2_F2stats.vcf.gz 2>/dev/null | bcftools norm -d all > "$mnvpath/Mutect2_MNV.vcf" 2>/dev/null
-    bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$mnvpath/"*LoFreq_inter.vcf.gz 2>/dev/null | bcftools norm -d all > "$mnvpath/LoFreq_MNV.vcf" 2>/dev/null
-    bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$mnvpath/"*SiNVICT_inter_RAW.vcf.gz 2>/dev/null | bcftools norm -d all > "$mnvpath/SiNVICT_MNV.vcf" 2>/dev/null
-
-    bgzip -c "$mnvpath/VarDict_MNV.vcf" > "$mnvpath/VarDict_MNV.vcf.gz" && bcftools index -f "$mnvpath/VarDict_MNV.vcf.gz"
-    bgzip -c "$mnvpath/Mutect2_MNV.vcf" > "$mnvpath/Mutect2_MNV.vcf.gz" && bcftools index -f "$mnvpath/Mutect2_MNV.vcf.gz"
-    bgzip -c "$mnvpath/LoFreq_MNV.vcf" > "$mnvpath/LoFreq_MNV.vcf.gz" && bcftools index -f "$mnvpath/LoFreq_MNV.vcf.gz"
-    bgzip -c "$mnvpath/SiNVICT_MNV.vcf" > "$mnvpath/SiNVICT_MNV.vcf.gz" && bcftools index -f "$mnvpath/SiNVICT_MNV.vcf.gz"
+    # The four tools are independent: normalize, compress and index them in parallel
+    local pids=() pid
+    normalize_for_mnv "$mnvpath/VarDict_MNV.vcf" "$mnvpath/"*VarDict_inter.vcf.gz & pids+=($!)
+    normalize_for_mnv "$mnvpath/Mutect2_MNV.vcf" "$mnvpath/"*M2_F2stats.vcf.gz & pids+=($!)
+    normalize_for_mnv "$mnvpath/LoFreq_MNV.vcf" "$mnvpath/"*LoFreq_inter.vcf.gz & pids+=($!)
+    normalize_for_mnv "$mnvpath/SiNVICT_MNV.vcf" "$mnvpath/"*SiNVICT_inter_RAW.vcf.gz & pids+=($!)
+    for pid in "${pids[@]}"; do
+      wait "$pid"
+    done
 
     # isec to merge into one list (variants called by at least 1 tool)
     bcftools isec -p "$mnvpath" -O z -n +1 "$mnvpath/SiNVICT_MNV.vcf.gz" "$mnvpath/Mutect2_MNV.vcf.gz" "$mnvpath/LoFreq_MNV.vcf.gz" "$mnvpath/VarDict_MNV.vcf.gz"

@@ -6,13 +6,13 @@
 # filtered), <sample>_<Tool>.vcf.gz (+ .csi, all filters, normalised) and copies its
 # unfiltered intermediate VCF into <output_dir>/mnvcalling for MNV calling.
 
-# Normalize, atomize, compress and index a filtered VCF.
+# Normalize, atomize, compress and index a filtered VCF. Writes <output_vcf>.gz (+ .csi);
+# the records are the same as when the plain VCF was written first and then bgzipped.
 process_vcf() {
   local input_vcf=$1
   local output_vcf=$2
 
-  bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$input_vcf" 2>/dev/null | bcftools norm -d all > "$output_vcf" 2>/dev/null
-  bgzip -f "$output_vcf"
+  bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$input_vcf" 2>/dev/null | bcftools norm -d all -O z -o "${output_vcf}.gz" 2>/dev/null
   bcftools index -f "${output_vcf}.gz"
 }
 
