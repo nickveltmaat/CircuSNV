@@ -89,10 +89,18 @@ start_run_log() {
   mkdir -p "$state_dir"
   RUN_LOG="$state_dir/run_$(date '+%Y%m%d_%H%M%S')_$$.log"
   exec 3>&1 4>&2
-  exec > >(perl -MPOSIX -pe 'BEGIN { $| = 1 } print strftime("[%Y-%m-%d %H:%M:%S] ", localtime)' | tee -a "$RUN_LOG")
-  LOG_PID_OUT=$!
-  exec 2> >(perl -MPOSIX -pe 'BEGIN { $| = 1 } print strftime("[%Y-%m-%d %H:%M:%S] ", localtime)' | tee -a "$RUN_LOG" >&4)
-  LOG_PID_ERR=$!
+  if command -v perl >/dev/null 2>&1; then
+    exec > >(perl -MPOSIX -pe 'BEGIN { $| = 1 } print strftime("[%Y-%m-%d %H:%M:%S] ", localtime)' | tee -a "$RUN_LOG")
+    LOG_PID_OUT=$!
+    exec 2> >(perl -MPOSIX -pe 'BEGIN { $| = 1 } print strftime("[%Y-%m-%d %H:%M:%S] ", localtime)' | tee -a "$RUN_LOG" >&4)
+    LOG_PID_ERR=$!
+  else
+    # Without perl: same log file, no timestamps
+    exec > >(tee -a "$RUN_LOG")
+    LOG_PID_OUT=$!
+    exec 2> >(tee -a "$RUN_LOG" >&4)
+    LOG_PID_ERR=$!
+  fi
   log "Log file: $RUN_LOG"
 }
 

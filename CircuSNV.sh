@@ -61,12 +61,13 @@ validate_args
 SBU=$(echo "scale=2; 1 / $SB" | bc)
 
 print_settings() {
-  echo -e "
+  cat <<EOF
+
 CircuSNV $(circusnv_version)
 Installation: $CIRCUSNV_HOME
-Threads: $THREADS"
-  echo -e "
-Settings: 
+Threads: $THREADS
+
+Settings:
 Input bam(s): $Inputbam
 Reference: $Reference
 Panel: $Listregions
@@ -81,7 +82,8 @@ Bayesian Prior for MNV calling: $PRIOR
 Crosslink Table: $CrosslinkTable
 Matched Control Logic: $Matched
 UNMET & repeat filtering: $UNMET
-Main output directory: $OutputDir"
+Main output directory: $OutputDir
+EOF
 }
 
 if [[ "$SKIP_CHECKS" != "true" ]]; then
