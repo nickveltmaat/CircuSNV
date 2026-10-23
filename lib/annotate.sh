@@ -141,7 +141,6 @@ add_matched_control_metrics() {
       chr = $1; pos = $2; depth = $4; read_bases = $5
       key = chr ":" pos
       read_bases = strip_start_end(read_bases)
-      counts = count_ref_alt(read_bases, "X", "Y")  # placeholder; we will recount per REF/ALT later
       # store raw read_bases and depth for per-mutation counting later
       pile_rb[key] = read_bases
       pile_dp[key] = depth + 0

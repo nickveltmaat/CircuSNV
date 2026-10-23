@@ -1,6 +1,5 @@
 #! /usr/bin/python
 
-#!/groups/umcg-pmb/tmp01/projects/hematopathology/Lymphoma/Nick/SNVcallingPipeline/env/bin/python3
 
 """
 This module reads a 'bcftools isec' output file of merged variants, and then converts to standard .vcf format.

@@ -126,12 +126,8 @@ run_tumor_sample() {
       annotate "$annotate_input" "Final_list_$samplename" excel vcf
     else
       annotate "$sample_dir/merged_vcfs_annotated-filtered.txt" "Final_list_$samplename" excel vcf
-      echo 'tmp'
     fi
   fi
-
-  # Wait for MNV algorithm to finish
-  wait
 
   # Sort the results into subdirectories
   mkdir "$sample_dir/raw-data/" && mkdir "$sample_dir/filtering-info/" && mkdir "$sample_dir/intermediate-files/" && mkdir "$sample_dir/final-list/"

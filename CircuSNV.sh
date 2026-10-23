@@ -9,14 +9,6 @@
 #SBATCH --get-user-env
 #SBATCH --export=NONE
 
-
-
-#TODO :
-#Integrate a check on which samples have been processed (see if output file has been generated --> if so: Skip sample). This way, the pipeline can easily continue where it breaks
-# Change first annotation step: Less tools to annotate to save time. Only SNPdbs & functional effect (see post filtering steps) that are needed can be kept. 
-
-
-
 # Initiating settings #
 # Locate the installation directory: helper scripts, the Python env, MNVista and resources live
 # there. Under sbatch this script runs from a spool copy, so fall back to the submitted path.

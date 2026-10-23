@@ -1,4 +1,4 @@
-#!/groups/umcg-pmb/tmp01/projects/hematopathology/Lymphoma/Nick/SNVcallingPipeline/env/bin/python3
+#!/usr/bin/env python3
 
 """
 This module loads the generated PoN and adds mutations that are solely found with one tool, but in at least x % of the normal samples. 
