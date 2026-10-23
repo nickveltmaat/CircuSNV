@@ -1,0 +1,9 @@
+# Python packages for the CircuSNV virtual environment (env/).
+# Versions are not pinned yet: replace these lines with the output of 'pip freeze' from the
+# environment that produced the reference results, so new installations match it.
+pandas
+numpy
+openpyxl
+open-cravat
+# Only used by scripts/matched_filtering.py, which the pipeline does not call at the moment
+scipy
