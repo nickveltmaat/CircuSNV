@@ -35,6 +35,10 @@ run_tumor_sample() {
   status_sinvict=0; wait "$pid_sinvict" || status_sinvict=$?
 
   echo "Vardict: $status_vardict, Mutect2: $status_mutect2, LoFreq: $status_lofreq, SiNVICT: $status_sinvict"
+  if (( status_vardict || status_mutect2 || status_lofreq || status_sinvict )); then
+    echo "ERROR: variant calling failed for $samplename after all retries (exit codes above); stopping this sample" >&2
+    return 1
+  fi
 
   # Merge outputs from all tools, zip and index
   (

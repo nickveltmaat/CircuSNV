@@ -29,8 +29,21 @@ prepare_pon() {
 
       ensure_bam_index "$healthycontrol" "$MODULE_SAMTOOLS_PON"
 
-      Vardict "$healthycontrol" "$PON_DIR/$samplename/" & Mutect2 "$healthycontrol" "$PON_DIR/$samplename/" & Lofreq "$healthycontrol" "$PON_DIR/$samplename/" & Sinvict "$healthycontrol" "$PON_DIR/$samplename/"
-      wait
+      # The four callers run in parallel, with the same retry wrapper as the tumor samples;
+      # the panel is only usable when every caller succeeded for every normal.
+      local caller status i
+      local pids=() callers=(Vardict Mutect2 Lofreq Sinvict)
+      for caller in "${callers[@]}"; do
+        run_caller_with_retries "$caller" "$healthycontrol" "$PON_DIR/$samplename/" 3 10 & pids+=($!)
+      done
+      for i in "${!pids[@]}"; do
+        status=0
+        wait "${pids[$i]}" || status=$?
+        if (( status != 0 )); then
+          echo "ERROR: ${callers[$i]} failed for normal $samplename (exit $status); the panel of normals would be incomplete" >&2
+          exit 1
+        fi
+      done
     done
 
     echo -e "\nMerging outputs for PoN..."
