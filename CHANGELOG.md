@@ -24,6 +24,8 @@ and output files are unchanged unless listed under "Fixes".
 - Timestamped output and a log file per run in `<output>/.circusnv/`.
 - `--resume` skips samples that finished in an earlier run; `--cleanup` removes
   intermediate files after each sample; `--threads` sets the thread count.
+- `--mnv-pon` sets the MNV panel of normals, which was a fixed file in the installation
+  directory.
 
 ### Robustness
 - The pipeline runs with `set -euo pipefail`. The exit status of every caller is checked, for
@@ -38,6 +40,8 @@ and output files are unchanged unless listed under "Fixes".
 - A BAM index could be taken for present when another sample's name started the same way.
 - Retries of a caller failed on files left by the previous attempt.
 - LoFreq's temporary BAM stayed behind when LoFreq failed.
+- A missing MNV panel of normals stops the run before it starts. MNVista does not report
+  the missing file and calls MNVs without the panel, which gave different MNV results.
 
 ### Efficiency
 - Normalised caller VCFs are written compressed directly.
