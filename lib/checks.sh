@@ -86,9 +86,6 @@ matched_control_problems() {
 check_warnings() {
   [[ -f "$Reference.fai" ]] || echo "reference index not found: $Reference.fai"
   [[ -f "${Reference%.*}.dict" ]] || echo "sequence dictionary for GATK not found: ${Reference%.*}.dict"
-  if [[ "$MNV" == "true" && -n "$PoN" && ! -f "$MNV_PON" ]]; then
-    echo "MNV panel of normals not found: $MNV_PON (MNVista is called with -C)"
-  fi
   if [[ "$UNMET" == "true" && ! -f "$UNMET_BED" ]]; then
     echo "UNMET scores not found: $UNMET_BED; they will be downloaded and converted"
   fi
@@ -100,6 +97,10 @@ run_checks() {
 
   if [[ "$MNV" == "true" && ! -x "$MNVISTA" ]]; then
     problems+=("MNVista not found or not executable: $MNVISTA (set MNVISTA in a --config file)")
+  fi
+  # MNVista does not fail on a missing -C file: it silently calls MNVs without the panel
+  if [[ "$MNV" == "true" && -n "$PoN" && ! -f "$MNV_PON" ]]; then
+    problems+=("MNV panel of normals not found: $MNV_PON (needed for MNVista with -P; set it with --mnv-pon)")
   fi
   if [[ -e "$OutputDir" ]]; then
     [[ -w "$OutputDir" ]] || problems+=("output directory is not writable: $OutputDir")
