@@ -71,7 +71,8 @@ behaviour. Items marked "decided" are done.
 - The `##contig` header lines come from a Python `set`, so their order can differ between runs.
   The records are not affected.
 - Option: sort the contigs (changes only the header order).
-- Status: to be decided by Nick.
+- Status: resolved. The cluster version of `isec_to_vcf.py`, now in git, sorts the contigs
+  (see D14).
 
 ### D11. Two annotation steps
 - The first OpenCRAVAT run annotates with all annotators, although post-filtering only needs
@@ -93,6 +94,14 @@ behaviour. Items marked "decided" are done.
   CPUs.
 - Option: divide the threads over the callers. This may change the speed, and for some tools
   the order of records; it needs a test.
+- Status: to be decided by Nick.
+
+### D14. `isec_to_vcf.py` fails on contigs other than chr1-22, X and Y
+- The contig sort key returns a number for `chr1`-`chr22`, `chrX` and `chrY` and the name for
+  any other contig (such as `chrM` or `chrUn_...`). Python 3 cannot compare the two, so the
+  script stops with a TypeError when a variant lies on such a contig. The old pipeline did not
+  check the exit status and went on with an incomplete VCF; now the sample fails.
+- Option: sort other contigs after `chrY`, by name.
 - Status: to be decided by Nick.
 
 ## To watch in the first test runs

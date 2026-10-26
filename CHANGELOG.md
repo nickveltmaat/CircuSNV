@@ -40,8 +40,11 @@ and output files are unchanged unless listed under "Fixes".
 - A BAM index could be taken for present when another sample's name started the same way.
 - Retries of a caller failed on files left by the previous attempt.
 - LoFreq's temporary BAM stayed behind when LoFreq failed.
-- A missing MNV panel of normals stops the run before it starts. MNVista does not report
-  the missing file and calls MNVs without the panel, which gave different MNV results.
+- A missing MNV panel of normals (`-H true` with `-P`) stops the run before it starts; it
+  was only a warning.
+- `isec_to_vcf.py` is now the version that runs on the cluster. The version in git was older:
+  it wrote the MNV input without AF, DP and MRD as INFO fields, which gave different MNV
+  results. The contigs in its VCF headers are now sorted.
 
 ### Efficiency
 - Normalised caller VCFs are written compressed directly.

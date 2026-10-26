@@ -34,7 +34,9 @@ Differences can come from the new code, or from things that changed since the re
 input and compare the two fresh runs:
 
 1. `cd <work>/circusnv-v2` and `git worktree add --detach ../circusnv-old e88243c8361e53b107400ce2e662e6e767189b1e`
-2. In `../circusnv-old`, link `env`, `MNVista` and the other files as in step 6.
+2. In `../circusnv-old`, link `env`, `MNVista` and the other files as in step 6. That commit
+   has an older `isec_to_vcf.py` than the cluster installation (different MNV results), so
+   also copy it: `cp <install>/isec_to_vcf.py ../circusnv-old/`
 3. The old script changes to a fixed directory; make it use the directory it is submitted
    from instead (local change, never committed):
    `sed -i 's|^cd /groups/.*$|cd "$SLURM_SUBMIT_DIR"|' ../circusnv-old/CircuSNV.sh`
