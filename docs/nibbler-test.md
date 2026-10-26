@@ -14,7 +14,8 @@ group's `/groups/<group>/tmp*/` area, `<install>` is your current CircuSNV insta
 5. `git fetch origin` and `git switch refactor/circusnv-v2` (later updates: `git pull`)
 6. Link the files that are not in git: `ln -s <install>/env env`, and when used also
    `ln -s <install>/MNVista MNVista`, `ln -s <install>/MNV_PoN_No_overlap_new.txt .`,
-   `ln -s <install>/hg38_genome.UNMET_bin10bp.bed .`
+   `ln -s <install>/hg38_genome.UNMET_bin10bp.bed .` (or pass the MNV panel of normals with
+   `--mnv-pon <install>/MNV_PoN_No_overlap_new.txt`)
 7. Check without running: `bash CircuSNV.sh --dry-run <options of the reference run> -O <work>/new_output`
 8. Run: `sbatch CircuSNV.sh <options of the reference run> -O <work>/new_output`
 9. Follow it with `squeue -u $USER`; when it is gone, read `tail -n 30 CircuSNV.out CircuSNV.err`

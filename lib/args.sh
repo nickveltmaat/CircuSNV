@@ -66,6 +66,8 @@ Filters:
 Optional analyses:
   -H, --mnv true|false         multi-nucleotide variant calling with MNVista (default: $MNV)
   -B, --mnv-prior NUM          Bayesian prior for MNVista              (default: $PRIOR)
+      --mnv-pon FILE           MNV panel of normals for MNVista, used with -H true and -P
+                               (default: $MNV_PON)
   -X, --crosslink-table FILE   TSV: samplename, timepoint (baseline/follow-up),
                                corresponding_baseline, matched_control
   -T, --matched-control true|false
@@ -145,7 +147,7 @@ parse_args() {
       -I|--input|-R|--reference|-L|--regions|-V|--min-vaf|-D|--min-depth|-C|--min-callers|\
       -P|--pon|-Q|--min-base-quality|-M|--min-alt-reads|-S|--strand-bias|-H|--mnv|\
       -B|--mnv-prior|-X|--crosslink-table|-T|--matched-control|-U|--unmet|-O|--output|\
-      --threads|--config)
+      --mnv-pon|--threads|--config)
         [[ $# -ge 2 ]] || die_usage "option $opt needs a value"
         val=$2
         shift 2
@@ -166,6 +168,7 @@ parse_args() {
       -S|--strand-bias) SB=$val;;
       -H|--mnv) MNV=$val;;
       -B|--mnv-prior) PRIOR=$val;;
+      --mnv-pon) MNV_PON=$val;;
       -X|--crosslink-table) CrosslinkTable=$val;;
       -T|--matched-control) Matched=$val;;
       -U|--unmet) UNMET=$val;;

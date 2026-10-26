@@ -96,7 +96,7 @@ export PATH=$PATH:/path/to/CircuSNV/tools/sinvict/
 
 For MNV calling, place the MNVista executable (and, when used with a PoN,
 `MNV_PoN_No_overlap_new.txt`) in the installation directory, or point to them in a config
-file.
+file; the MNV panel of normals can also be given with `--mnv-pon`.
 
 ## Usage
 
@@ -125,6 +125,7 @@ everything and see the plan without running anything.
 | `-U`, `--unmet` | `true`/`false` | UNMET score and repeat-region filtering | `false` |
 | `-H`, `--mnv` | `true`/`false` | MNV calling with MNVista | `false` |
 | `-B`, `--mnv-prior` | number | Bayesian prior for MNVista | `0.5` |
+| `--mnv-pon` | file | MNV panel of normals for MNVista, used with `-H true` and `-P` | `MNV_PoN_No_overlap_new.txt` in the installation directory |
 | `-X`, `--crosslink-table` | file | crosslink table, see below | off |
 | `-T`, `--matched-control` | `true`/`false` | add matched-control read counts (needs `-X` and a directory `-I`) | `false` |
 | `-O`, `--output` | directory | main output directory | `./output` |
