@@ -1,204 +1,211 @@
 # *Circu*SNV
-#### A Scalable and High-Sensitivity Variant Calling Pipeline
-CircuSNV is a robust and scalable bash pipeline designed for the sensitive detection of somatic single-nucleotide variants (SNVs) and small insertions/deletions (indels) from targeted regions. The pipeline is optimized for ultra-low variant allele frequency (VAF) detection and is particularly useful in applications such as minimal residual disease (MRD) monitoring, using *circu*lating tumor DNA (ctDNA) from liquid biopsies. CircuSNV integrates multiple variant calling algorithms, including [VarDict](https://pubmed.ncbi.nlm.nih.gov/27060149/), [LoFreq](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3526318/), [Mutect2](https://www.biorxiv.org/content/10.1101/861054v1) & [SiNVICT](https://pubmed.ncbi.nlm.nih.gov/27531099/), applies stringent quality filters, optionally generates a Panel of Normals (PoN), and merges intersected calls. Subsequent processes include matched-control filtering, [UNMET](https://doi.org/10.1093/nar/gkad1140) score exclusion, multi-nucleotide variant (MNV) calling, and functional annotation via OpenCravat. The final outputs are organized per sample into raw, intermediate, and final annotated result directories.
- 
-#
-## Prerequisites:
- * A process-ready BAM file (or a directory with BAM files), e.g. pre-processed following [GATK best practices](https://gatk.broadinstitute.org/hc/en-us/articles/360035535912-Data-pre-processing-for-variant-discovery)
- * [GATK](https://gatk.broadinstitute.org/hc/en-us) > [4.3.0.0](https://github.com/broadinstitute/gatk/releases/tag/4.3.0.0)
- * [Vardict Java](https://bioconda.github.io/recipes/vardict-java/README.html) > 1.8.2 (`teststrandbias.R` and  `var2vcf_valid.pl` need to be in $PATH)
- * [SAMtools](http://www.htslib.org/) > [1.16.1](http://www.htslib.org/download/)
- * BCFtools > [1.11](http://www.htslib.org/download/)
- * HTSlib > [1.11](http://www.htslib.org/download/)
- * Python > [3.9](https://www.python.org/downloads/release/python-390/)
- * R > [4.0.3](https://cran.r-project.org/bin/windows/base/)
- * Perl
- * IGV and BEDTools (OPTIONAL: Only needed if UNMET-based filtering is toggled 'true' using -U)
- * LoFreq* and SiNVICT with their respective prerequisites are pre-built, more info on this in [__'Installation'__](https://github.com/nickveltmaat/SNVcaller/blob/main/README.md#installation)
+#### A scalable, high-sensitivity variant calling pipeline for cfDNA
 
-#
-## Workflow Description
-#### 1. Data & Command Line Input:
-- Read and validate required (`-I`, `-R`, `-L`, `-O`) and optional flags (`-V`, `-D`, `-C`, `-P`, `-Q`, `-M`, `-S`, `-H`, `-X`, `-T`, `-U`)
-- `-I` Accepts aligned sequencing data in `.bam` format or a directory containing multiple files. Index `.bai` files will be created using SAMtools if they are not already present in the same folder. 
-- Depending on if `-T` and `-X` are provided and `-I` is a directory containing multiple `.bam` files, the order of sample processing will be determined so that matched control files will be processed first. Additionally, if `-H` is true, baseline samples need to be analyzed fist.
+CircuSNV detects somatic single-nucleotide variants (SNVs) and small insertions/deletions
+(indels) in targeted sequencing data of *circu*lating tumour DNA (ctDNA), without matched
+controls. It is built for ultra-low variant allele frequencies (VAF), for example for minimal
+residual disease (MRD) monitoring with liquid biopsies.
 
-#### --- OPTIONAL --- Panel of Normals (PoN) generation:
-- If `-P` directs to a directory containing healthy control `.bam` files, variant calling will first be performed on these samples (as described below) to generate tool-specific blacklists, before starting on the tumor samples.
-- All blacklists into a unified PoN text file, by keeping variants that are found in at least 2 variant callers, or with 1 variant caller but in at least 20% of the healthy control samples. 
-- If `-P` directs to a PoN text file (pre made or user defined), this text file is used for downstream filtering. 
+CircuSNV runs four variant callers in parallel ([VarDict](https://pubmed.ncbi.nlm.nih.gov/27060149/),
+[Mutect2](https://www.biorxiv.org/content/10.1101/861054v1), [LoFreq](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3526318/)
+and [SiNVICT](https://pubmed.ncbi.nlm.nih.gov/27531099/)), filters and merges their calls,
+optionally builds and applies a panel of normals (PoN), optionally filters on the
+[UNMET](https://doi.org/10.1093/nar/gkad1140) score, optionally calls multi-nucleotide variants
+(MNVs) with [MNVista](https://github.com/lasillje/MNVista), and annotates the result with
+OpenCRAVAT.
 
-#### 2. Variant Calling with Multi-Algorithm Integration:
-- VarDict: Sensitive detection of low-VAF variants.
-- Mutect2: Advanced somatic variant caller from GATK.
-- LoFreq: A high-specificity caller that adjusts for sequencing error models to refine calls.
-- SiNVICT: Optimized for ultra-low frequency detection.
+## Workflow
 
-#### 3. Initial Variant Filtering:
-- Per caller, variants are filtered based on thresholds for read depth (`-D`), minimum variant-supporting reads (`-M`), Variant Allele Frequency (VAF, `-V`), strand bias (`-S`), and base quality (`-Q`) metrics.
-- Variants of all callers are merged, variants called with at least `-C` of these tools will be used for futher analysis.
-- PoN filter (Optional). Filters out blacklisted mutations as defined earlier using the `-P` argument if provided.
-- Matched control filter (Optional). If `-T` is true, variants found in healthy samples are filtered out using [matched_filtering.py](https://github.com/nickveltmaat/CircuSNV/blob/main/matched_filtering.py). This script filters variants by identifying those that are either unique to the tumor sample or show significantly higher variant allele frequency (VAF) in the tumor compared to the matched normal, using criteria like Fisher’s exact test (p < 0.05), a minimum VAF difference (≥ 0.02), and a relative VAF ratio (≥ 3). Variants with high VAF in the control (germline) are excluded.
-- UNMET filter (Optional). If `-U` is true, variants with an unmet score of > 0.93 are filtered out, by automatically downloading the [10-bp-binned UNMET scores](http://web16.kazusa.or.jp/data/hg38/hg38_genome.UNMET_bin10bp.tdf) and converting it to a bed file.
+1. **Input and checks.** All options are validated and, unless `--skip-checks` is given, the
+   pipeline checks the inputs, the Python environment, MNVista, the environment modules and
+   every required command before any work starts. A BAM index is created when it is missing.
+2. **Panel of normals (optional, `-P`).**
+   - A directory with normal BAMs: the four callers run on every normal; per tool the normals
+     are merged; variants found by at least 2 tools form the blacklist, and variants found by
+     1 tool are added when they occur in at least 20% of the normals.
+   - A file: a pre-made blacklist (`chrom pos ref alt`, tab-separated, no header).
+3. **Variant calling.** VarDict, Mutect2, LoFreq and SiNVICT run in parallel per sample, each
+   with up to three attempts. Per caller, variants are filtered on strand bias (`-S`), read
+   depth (`-D`), VAF (`-V`), supporting reads (`-M`) and base quality (`-Q`), then
+   normalised and atomised.
+4. **Merging.** Variants called by at least `-C` tools are kept, the PoN blacklist is
+   applied, and the depth, VAF and supporting reads of each tool are added back.
+5. **UNMET filter (optional, `-U true`).** Variants with an UNMET score of 0.90 or higher are
+   removed. The 10-bp binned
+   [UNMET scores](http://web16.kazusa.or.jp/data/hg38/hg38_genome.UNMET_bin10bp.tdf) are
+   downloaded and converted on first use.
+6. **MNV calling (optional, `-H true`).** MNVista runs on the unfiltered calls of all tools.
+   With a crosslink table (`-X`), baselines are analysed first and each follow-up is analysed
+   only at the SNVs that formed an MNV in its baseline.
+7. **Annotation and post-filtering.** OpenCRAVAT annotates the variants;
+   `scripts/post_filtering.py` removes synonymous, UTR, intronic and 2 kb up/downstream
+   variants, variants with a population frequency above 0.01% in 1000 Genomes or gnomAD, and,
+   with `-U true`, variants in repeat regions.
+8. **Matched-control read counts (optional, `-T true`).** For each remaining variant the
+   reference and alternative read counts in the matched control (from the crosslink table)
+   are added.
+9. **Final annotation.** The remaining variants are annotated again, to an Excel file and a
+   VCF. The second annotation step is deliberate: post-filtering loses the layout of the first
+   annotation.
 
-#### --- OPTIONAL --- MNV calling:
-- If `-H` is set to true, MNV calling will be performed on unfiltered SNVs using an in-house developed MNV calling algorithm called [MNVista](https://github.com/lasillje/MNVista). See that page for a more detailed explanation. 
-- If `-X` is provided, baseline will be analyzed first. MNV calling in follow-up samples will then be restricted to SNVs that were previously identified as part of an MNV in the baseline.
+See the [pipeline flow diagram](flowchart_pipeline2.drawio.png) for a rough overview.
 
-#### 4. Initial annotation & Further filtering:
-- OpenCravat is used to annotate variants with functional impact scores and population allele frequencies.
-- Integrates databases such as [ClinVar](https://www.ncbi.nlm.nih.gov/clinvar/), [dbSNP](https://www.ncbi.nlm.nih.gov/snp/), [COSMIC](https://cancer.sanger.ac.uk/cosmic), [gnomAD](https://gnomad.broadinstitute.org/) and many more for pathogenicity assessment.
-- [post_filtering.py](https://github.com/nickveltmaat/CircuSNV/blob/main/post_filtering.py) is used to filter annotated variant data by removing variants with low functional impact (e.g., synonymous, UTR, intronic, upstream/downstream) and common population variants.
-- It outputs a filtered variant list for re-annotation, a summary of filtering steps, and an Excel file of removed variants.
-- If `-U`is true, variants found in repeat regions will addtionally be filtered.
+## Requirements
 
-#### 6. Output & Reporting:
-- The final list is re-annotated, ending up with an annotaed consensus variant set in both `.vcf` and excel, while also keeping per-caller VCF files.
-- Both provide annotated variants with key metrics for downstream analyses.
-- Per sample, subdirectories are created to store all the data generated by CircuSNV.
-```
-output_dir(-O)/sample_id/
-├── raw-data/                 # per-tool filtered VCFs
-├── intermediate-files/       # merged & initial filtered lists
-├── filtering-info/           # logs, list of removed variants from post_filtering.py
-└── final-list/               # annotated final variants in excel and vcf format. 
-```
+- A Linux cluster with Slurm and environment modules (Lmod/EasyBuild). The modules the
+  pipeline loads are listed, with their default names, in
+  [config/circusnv.example.conf](config/circusnv.example.conf).
+- Process-ready BAM files, for example pre-processed following the
+  [GATK best practices](https://gatk.broadinstitute.org/hc/en-us/articles/360035535912-Data-pre-processing-for-variant-discovery).
+- A reference FASTA (hg38; the annotation and UNMET steps assume hg38) with its `.fai` index
+  and GATK `.dict`.
+- Tools: GATK 4.3, VarDict Java (`vardict-java`, `teststrandbias.R` and `var2vcf_valid.pl` on
+  `PATH`), SAMtools, BCFtools, HTSlib, LoFreq, bam-readcount, SiNVICT, R, Perl, `bc`;
+  for `-U true` also BEDTools, `wget` and IGV (`igvtools`); for `-H true` MNVista.
+- A Python 3 virtual environment `env/` in the installation directory with the packages from
+  [requirements.txt](requirements.txt) and the OpenCRAVAT annotators `cgc cadd_exome clinpred
+  cosmic mutation_assessor thousandgenomes gnomad3 repeat`.
 
-See the [`Pipeline flow diagram`](https://github.com/nickveltmaat/CircuSNV/blob/main/flowchart_pipeline2.drawio.png) for a rough visual representation of the pipeline.
-
-#
 ## Installation
-**1. Clone the repo**
 
 ```
 git clone https://github.com/nickveltmaat/CircuSNV
-```
-
-**2. Set working directory to the repo**
-
-```
-cd /path/to/CircuSNV
-```
-
-**3. Create python virtual environment (env)**
-
-```
+cd CircuSNV
 python3 -m venv ./env
-```
-
-**4. Install required packages in env with pip3**
-
-```
 source ./env/bin/activate
-pip3 install pandas
-pip3 install scipy
-pip3 install glob
-pip3 install xlrd
-pip install open-cravat
+pip install -r requirements.txt
 oc module install-base
-oc module ls -a -t annotator  (this generartes a list of available annotators that can be downloaded)
-oc module install thousandgenomes gnomad3 repeat cgc cadd_exome clinpred cosmic mutation_assessor ...  (see https://open-cravat.readthedocs.io/en/latest/1.-Installation-Instructions.html for more detailed instructions)
+oc module install cgc cadd_exome clinpred cosmic mutation_assessor thousandgenomes gnomad3 repeat
 deactivate
 ```
 
-**5. [Download](https://drive.google.com/drive/folders/1QBt0NdPqjQU_y-A7omxoyiPfl1DL65Xn?usp=sharing) and copy the pre-built tools to `/path/to/CircuSNV/` and unzip**
- 
+See the [OpenCRAVAT installation instructions](https://open-cravat.readthedocs.io/en/latest/1.-Installation-Instructions.html)
+for details.
+
+Pre-built LoFreq and SiNVICT (with bam-readcount) can be
+[downloaded](https://drive.google.com/drive/folders/1QBt0NdPqjQU_y-A7omxoyiPfl1DL65Xn?usp=sharing)
+as `tools.zip`. Unzip it in the installation directory and add the tools to your `PATH`
+(for example in `~/.bashrc`, which Slurm jobs read through `--get-user-env`):
+
 ```
-unzip ./tools.zip
+export PATH=$PATH:/path/to/CircuSNV/tools/lofreq/src/lofreq/
+export PATH=$PATH:/path/to/CircuSNV/tools/lofreq/src/scripts/
+export PATH=$PATH:/path/to/CircuSNV/tools/sinvict/bam-readcount/build/bin/
+export PATH=$PATH:/path/to/CircuSNV/tools/sinvict/
 ```
 
-**5. Export paths to pre-built tools**
- 
-```
-export PATH=$PATH:/path/to/CircuSNV/tools/lofreq/src/lofreq/ #Lofreq
-export PATH=$PATH:/path/to/CircuSNV/tools/lofreq/src/scripts/ #Lofreq 2?
-export PATH=$PATH:/path/to/CircuSNV/tools/sinvict/bam-readcount/build/bin/ #BamReadcount
-export PATH=$PATH:/path/to/CircuSNV/tools/sinvict/ #SiNVICT
-```
- 
-**7. Adjust paths in [CircuSNV.sh](https://github.com/nickveltmaat/CircuSNV/blob/main/CircuSNV.sh)**
- 
-```
-cd to CircuSNV installation directory
-```
-`TIP:  Also check the hardcoded versions of tools loaded via 'module load'. Change them if needed. `
- 
-#
+For MNV calling, place the MNVista executable (and, when used with a PoN,
+`MNV_PoN_No_overlap_new.txt`) in the installation directory, or point to them in a config
+file; the MNV panel of normals can also be given with `--mnv-pon`.
+
 ## Usage
-Once all tools and pre-requisites are installed correctly, the pipeline can be called using: 
-```
-bash ./CircuSNV.sh -I /path/sample.bam -R homo_sapiens.fasta -L targets.bed -O ./results/ OPTIONAL_ARGUMENTS
-```
 
-By default, the script requires 12 threads and 12 GB of ram. This can be changed in the CircuSNV.sh code (hard-coded). 
+Submit from the directory where relative paths should be resolved:
 
-| Flag | Parameter                  | Description                                                                              | Default   |
-|------|----------------------------|------------------------------------------------------------------------------------------|-----------|
-| `-I` | `<input BAM or directory>` | Path to a single BAM file or directory of BAMs.                                          | **Required** |
-| `-R` | `<reference.fasta>`        | Reference genome FASTA (indexed).                                                        | **Required** |
-| `-L` | `<regions.bed>`            | BED file containing target regions.                                                      | **Required** |
-| `-V` | `<float>`                  | Minimum Variant Allele Frequency (VAF).                                                  | `0.001`   |
-| `-D` | `<int>`                    | Minimum read depth.                                                                      | `100`     |
-| `-C` | `<int>`                    | Minimum number of tools calling the variant (intersection count).                        | `1`       |
-| `-P` | `<PoN directory>`          | Directory of normal BAMs for PoN generation (or pre‑made blacklist.txt).                 | *off*     |
-| `-Q` | `<int>`                    | Minimum base quality threshold.                                                          | `25`      |
-| `-M` | `<int>`                    | Minimum reads supporting a mutation.                                                     | `3`       |
-| `-S` | `<float>`                  | Strand‑bias threshold (min fraction of forward vs. reverse reads).                       | `0.1`     |
-| `-H` | `<true/false>`             | Enable multi‑nucleotide variant (MNV) phasing and calling.                               | `false`   |
-| `-X` | `<crosslink table.tsv>`    | TSV linking sample names, timepoints, and corresponding baselines for matched/MNV modes. | *off*     |
-| `-T` | `<true/false>`             | Matched‑control subtraction logic (requires `-X`).                                       | `false`   |
-| `-U` | `<true/false>`             | Use UNMET score filtering to exclude error‑prone and repeat regions.                     | `false`   |
-| `-O` | `<output directory>`       | Main directory for all sample outputs.                                                   | `./output`|
-| `-h` |                            | Display help message and exit.                                                           |           |
-
-#### Some examples:
-- Directory of BAMs with PoN
 ```
-bash CircuSNV.sh \
-  -I /data/tumors/ \
-  -R /refs/hg38.fasta \
-  -L /refs/targets.bed \
-  -P /data/normals/ \
-  -O /results/ \
-  -V 0.005 -D 150 -C 2
-```
-- Matched‑mode with MNV and UNMET filtering
-```
-bash CircuSNV.sh \
-  -I /data/tumors/ \
-  -R hg38.fasta \
-  -L regions.bed \
-  -X crosslink_table.tsv \
-  -T true \
-  -H true \
-  -U true \
-  -O analysis_output/
+sbatch /path/to/CircuSNV/CircuSNV.sh -I sample.bam -R hg38.fasta -L targets.bed -O results/
 ```
 
-#### Pre-made PoN example
-As mentioned, `-P` can be a pre-made `.txt` file rather than a directory. Make sure it is in the following format (no headers): 
-| chr1 | 2556714 | A   | G   |
-|------|---------|-----|-----|
-| chr1 | 2562891 | G   | A   |
-| chr1 | 9710455 | G   | A   |
-| chr1 | 9710456 | A   | G   |
-| chr1 | 9710457 | T   | C   |
-| chr1 | 9710458 | G   | GC  |
+or run directly with `bash CircuSNV.sh ...`. The `#SBATCH` header of `CircuSNV.sh` requests
+16 CPUs and 16 GB; change it there or with `sbatch` options. Start with `--dry-run` to check
+everything and see the plan without running anything.
 
+| Option | Value | Description | Default |
+| --- | --- | --- | --- |
+| `-I`, `--input` | path | BAM file or directory with BAM files | required |
+| `-R`, `--reference` | file | reference FASTA | required |
+| `-L`, `--regions` | file | BED file with target regions | required |
+| `-V`, `--min-vaf` | number | minimum variant allele frequency | `0.001` |
+| `-D`, `--min-depth` | integer | minimum read depth | `100` |
+| `-C`, `--min-callers` | 1-4 | minimum number of callers | `1` |
+| `-Q`, `--min-base-quality` | integer | minimum base quality | `25` |
+| `-M`, `--min-alt-reads` | integer | minimum reads supporting a mutation | `3` |
+| `-S`, `--strand-bias` | number | the forward/reverse ratio of the supporting reads must lie between this value and its inverse | `0.9` |
+| `-P`, `--pon` | path | directory with normal BAMs, or a pre-made blacklist file | off |
+| `-U`, `--unmet` | `true`/`false` | UNMET score and repeat-region filtering | `false` |
+| `-H`, `--mnv` | `true`/`false` | MNV calling with MNVista | `false` |
+| `-B`, `--mnv-prior` | number | Bayesian prior for MNVista | `0.5` |
+| `--mnv-pon` | file | MNV panel of normals for MNVista, used with `-H true` and `-P` | `MNV_PoN_No_overlap_new.txt` in the installation directory |
+| `-X`, `--crosslink-table` | file | crosslink table, see below | off |
+| `-T`, `--matched-control` | `true`/`false` | add matched-control read counts (needs `-X` and a directory `-I`) | `false` |
+| `-O`, `--output` | directory | main output directory | `./output` |
+| `--threads` | integer | threads per tool | `SLURM_CPUS_PER_TASK`, else `12` |
+| `--config` | file | settings file, see [config/circusnv.example.conf](config/circusnv.example.conf) | none |
+| `--dry-run` | | check everything and show what would run, then stop | |
+| `--resume` | | skip samples that finished in an earlier run into the same output directory | |
+| `--cleanup` | | remove `isec/` and MNV intermediates after each finished sample | |
+| `--skip-checks` | | do not run the pre-run checks | |
+| `-h`, `--help` / `--version` | | show help / version | |
 
-#### CrosslinkTable example
-When providing `-X`, it needs to be a `.tsv` file in the following format: samplenames without file extension
+Relative paths are taken from the directory the pipeline is started from. Without
+`--resume`, a run stops before starting when the output directory already contains results
+for one of its samples. If a sample fails, the other samples still run; the run then ends
+with a non-zero exit status and lists the failed samples, which `--resume` redoes.
 
-| samplename | timepoint  | corresponding_baseline | matched_control |
-|------------|------------|-------------------------|-----------------|
-| SAMPLE_A   | baseline   |                         | CONTROL_X       |
-| SAMPLE_B   | follow-up  | SAMPLE_A                | CONTROL_X       |
-| SAMPLE_C   | follow-up  | SAMPLE_A                | CONTROL_X       |
-| SAMPLE_D   | follow-up  | SAMPLE_A                | CONTROL_X       |
-| SAMPLE_E   | baseline   |                         | CONTROL_Y       |
-| SAMPLE_F   | follow-up  | SAMPLE_E                | CONTROL_Y       |
-| SAMPLE_G   | follow-up  | SAMPLE_E                | CONTROL_Y       |
-| SAMPLE_H   | follow-up  | SAMPLE_E                | CONTROL_Y       |
+### Examples
 
-`NOTE: If -T is not provided, the matched_control column is not required`
-#
+Directory of BAMs with a panel of normals:
+
+```
+sbatch CircuSNV.sh -I /data/tumors/ -R /refs/hg38.fasta -L /refs/targets.bed \
+  -P /data/normals/ -O /results/ -V 0.005 -D 150 -C 2
+```
+
+Baselines and follow-ups with MNV calling, matched controls and UNMET filtering:
+
+```
+sbatch CircuSNV.sh -I /data/tumors/ -R hg38.fasta -L regions.bed \
+  -X crosslink_table.tsv -T true -H true -U true -O analysis_output/
+```
+
+### Crosslink table
+
+A tab-separated file with a header line; sample names without file extension. The
+`matched_control` column is only needed with `-T true`.
+
+| samplename | timepoint | corresponding_baseline | matched_control |
+| --- | --- | --- | --- |
+| SAMPLE_A | baseline | | CONTROL_X |
+| SAMPLE_B | follow-up | SAMPLE_A | CONTROL_X |
+| SAMPLE_C | baseline | | CONTROL_Y |
+| SAMPLE_D | follow-up | SAMPLE_C | CONTROL_Y |
+
+With a crosslink table, only the samples marked `baseline` or `follow-up` are processed:
+first all baselines, then all follow-ups.
+
+### Pre-made panel of normals
+
+A tab-separated file without header:
+
+| | | | |
+| --- | --- | --- | --- |
+| chr1 | 2556714 | A | G |
+| chr1 | 9710458 | G | GC |
+
+## Output
+
+```
+<output>/
+├── <sample>/
+│   ├── <sample>_<Tool>_RAW.vcf         # per caller, after the strand-bias filter
+│   ├── <sample>_<Tool>.vcf.gz(.csi)    # per caller, all filters, normalised
+│   ├── isec/                           # merged calls (bcftools isec), PoN-filtered calls
+│   ├── mnvcalling/                     # MNV input and MNVista results (with -H true)
+│   ├── intermediate-files/             # merged variant lists and the first annotation
+│   ├── filtering-info/                 # variants left after each filter, removed variants
+│   ├── final-list/                     # annotated final variants (Excel and VCF)
+│   └── raw-data/                       # (empty, kept for compatibility)
+└── .circusnv/                          # run logs and resume markers
+```
+
+A sample without variants after post-filtering gets `NO_MUTS.txt` and an empty
+`final-list/`. The panel of normals is built in `PoN/` in the installation directory.
+
+## Development and testing
+
+The pipeline code lives in `CircuSNV.sh` (entry point) and `lib/` (bash modules); the Python
+helpers are in `scripts/`. Changes are tested on the cluster by comparing the output with a
+reference run: see [docs/nibbler-test.md](docs/nibbler-test.md) and
+[tests/nibbler/compare_outputs.py](tests/nibbler/compare_outputs.py). Open questions about
+intended behaviour are listed in [docs/known-issues.md](docs/known-issues.md); changes per
+version are in [CHANGELOG.md](CHANGELOG.md).
