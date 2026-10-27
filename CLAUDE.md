@@ -1,8 +1,11 @@
 # CircuSNV
 
 ## Doel
-Een betere, efficiëntere en gebruiksvriendelijkere versie van CircuSNV maken, met exact dezelfde
-functionaliteit, in bash.
+Een betere, efficiëntere en gebruiksvriendelijkere versie van CircuSNV maken, in bash.
+- Fase 1 (klaar, PR #6): de structuur herzien met exact dezelfde resultaten als productie.
+- Volgende iteraties staan in `docs/roadmap.md`: kleine opvolgpunten, nieuwe functies (caller-output
+  hergebruiken, MNVista-only), een biologisch logisch proces (inhoudelijke wijzigingen toegestaan
+  als het beter wordt) en snelheid. Werk per iteratie op een eigen branch.
 
 ## Structuur
 - `CircuSNV.sh` is het startscript (bash, met `#SBATCH`-kop): instellingen laden, argumenten
@@ -36,8 +39,13 @@ functionaliteit, in bash.
 - Niet in de repo: `env/`, `MNVista`, `MNV_PoN_No_overlap_new.txt`, de vooraf gebouwde tools
   (LoFreq, SiNVICT, bam-readcount).
 - Genoombuild hg38 is hardcoded.
-- Bij verschillen tussen README en code geldt voorlopig het gedrag van de code als baseline.
-  Openstaande punten staan in `docs/known-issues.md`.
+- Baseline is de productie-installatie op Nibbler, niet de code in git. Nick draait daar
+  `CircuSNV_matched2.sh` uit een eigen map die geen git-checkout is; die kan afwijken van git
+  (zo was `isec_to_vcf.py` in git verouderd, gesynchroniseerd in PR #6). Verschilt een
+  Nibbler-vergelijking, controleer dan eerst of de clusterbestanden van git afwijken
+  (`diff --strip-trailing-cr -wB`, shebangs negeren) voordat je de nieuwe code verdenkt.
+- Bij verschillen tussen README en code geldt het gedrag van de code. Open beslissingen staan in
+  `docs/known-issues.md`, gepland werk in `docs/roadmap.md`.
 
 ## Werkafspraken
 - Geen gedragswijziging zonder vergelijking met de baseline-output. Refactors en gedragswijzigingen
@@ -50,6 +58,13 @@ functionaliteit, in bash.
 - Bash-stijl: `set -euo pipefail`, variabelen quoten, geen hardcoded paden, LF-regeleinden.
 - Blijf bij bash, tenzij een andere taal duidelijk beter is; leg dat eerst voor.
 - Uitleg aan Nick in het Nederlands; code, commentaar en commitberichten in het Engels (openbare repo).
+
+## Op een nieuwe machine
+- Git-identiteit eenmalig instellen, met het GitHub-noreply-adres (nooit het UMCG-adres, de repo is
+  openbaar): `git config --global user.name "Nick Veltmaat"` en
+  `git config --global user.email "80262318+nickveltmaat@users.noreply.github.com"`.
+- `gh` installeren en zelf inloggen met `gh auth login`.
+- `.claude/settings.local.json` is per machine en staat niet in git.
 
 ## Conventies
 - Scripts met LF-regeleinden (`.gitattributes`).
