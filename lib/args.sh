@@ -66,8 +66,8 @@ Filters:
 Optional analyses:
   -H, --mnv true|false         multi-nucleotide variant calling with MNVista (default: $MNV)
   -B, --mnv-prior NUM          Bayesian prior for MNVista              (default: $PRIOR)
-      --mnv-pon FILE           MNV panel of normals for MNVista, used with -H true and -P
-                               (default: $MNV_PON)
+      --mnv-pon FILE           MNV panel of normals for MNVista (its -C option); independent
+                               of -P                                   (default: ${MNV_PON:-off})
   -X, --crosslink-table FILE   TSV: samplename, timepoint (baseline/follow-up),
                                corresponding_baseline, matched_control
   -T, --matched-control true|false
@@ -210,6 +210,10 @@ validate_args() {
   [[ -z "$Reference" || -f "$Reference" ]] || errors+=("reference FASTA not found: $Reference")
   [[ -z "$Listregions" || -f "$Listregions" ]] || errors+=("regions BED not found: $Listregions")
   [[ -z "$PoN" || -e "$PoN" ]] || errors+=("panel of normals not found: $PoN")
+  # Checked here, not in the skippable pre-run checks: MNVista does not report a missing -C file
+  if [[ "$MNV" == "true" && -n "$MNV_PON" && ! -f "$MNV_PON" ]]; then
+    errors+=("MNV panel of normals not found: $MNV_PON")
+  fi
   [[ -z "$CrosslinkTable" || -f "$CrosslinkTable" ]] || errors+=("crosslink table not found: $CrosslinkTable")
   [[ ! -e "$OutputDir" || -d "$OutputDir" ]] || errors+=("output path exists and is not a directory: $OutputDir")
 
