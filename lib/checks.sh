@@ -98,10 +98,6 @@ run_checks() {
   if [[ "$MNV" == "true" && ! -x "$MNVISTA" ]]; then
     problems+=("MNVista not found or not executable: $MNVISTA (set MNVISTA in a --config file)")
   fi
-  # MNVista does not fail on a missing -C file: it silently calls MNVs without the panel
-  if [[ "$MNV" == "true" && -n "$PoN" && ! -f "$MNV_PON" ]]; then
-    problems+=("MNV panel of normals not found: $MNV_PON (needed for MNVista with -P; set it with --mnv-pon)")
-  fi
   if [[ -e "$OutputDir" ]]; then
     [[ -w "$OutputDir" ]] || problems+=("output directory is not writable: $OutputDir")
   else

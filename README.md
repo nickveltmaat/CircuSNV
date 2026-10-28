@@ -36,7 +36,8 @@ OpenCRAVAT.
    downloaded and converted on first use.
 6. **MNV calling (optional, `-H true`).** MNVista runs on the unfiltered calls of all tools.
    With a crosslink table (`-X`), baselines are analysed first and each follow-up is analysed
-   only at the SNVs that formed an MNV in its baseline.
+   only at the SNVs that formed an MNV in its baseline. An MNV panel of normals is used only
+   when it is given with `--mnv-pon`; the PoN of `-P` is for the SNV calls.
 7. **Annotation and post-filtering.** OpenCRAVAT annotates the variants;
    `scripts/post_filtering.py` removes synonymous, UTR, intronic and 2 kb up/downstream
    variants, variants with a population frequency above 0.01% in 1000 Genomes or gnomAD, and,
@@ -94,9 +95,8 @@ export PATH=$PATH:/path/to/CircuSNV/tools/sinvict/bam-readcount/build/bin/
 export PATH=$PATH:/path/to/CircuSNV/tools/sinvict/
 ```
 
-For MNV calling, place the MNVista executable (and, when used with a PoN,
-`MNV_PoN_No_overlap_new.txt`) in the installation directory, or point to them in a config
-file; the MNV panel of normals can also be given with `--mnv-pon`.
+For MNV calling, place the MNVista executable in the installation directory, or point to it
+in a config file. An MNV panel of normals is optional: give it with `--mnv-pon`.
 
 ## Usage
 
@@ -125,7 +125,7 @@ everything and see the plan without running anything.
 | `-U`, `--unmet` | `true`/`false` | UNMET score and repeat-region filtering | `false` |
 | `-H`, `--mnv` | `true`/`false` | MNV calling with MNVista | `false` |
 | `-B`, `--mnv-prior` | number | Bayesian prior for MNVista | `0.5` |
-| `--mnv-pon` | file | MNV panel of normals for MNVista, used with `-H true` and `-P` | `MNV_PoN_No_overlap_new.txt` in the installation directory |
+| `--mnv-pon` | file | MNV panel of normals for MNVista (its `-C` option), independent of `-P` | off |
 | `-X`, `--crosslink-table` | file | crosslink table, see below | off |
 | `-T`, `--matched-control` | `true`/`false` | add matched-control read counts (needs `-X` and a directory `-I`) | `false` |
 | `-O`, `--output` | directory | main output directory | `./output` |

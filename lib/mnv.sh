@@ -64,7 +64,7 @@ mnv_calling() {
   local sample_info timepoint corresponding_baseline
 
   local mnvista_args=("$bam_file" "$OutputDir/$samplename/mnvcalling/sites.vcf" "$OutputDir/$samplename/mnvcalling/results" -T 15 -M 6 -R 150 -F 0 -J 0)
-  if [[ -n "$PoN" ]]; then
+  if [[ -n "$MNV_PON" ]]; then
     mnvista_args+=(-C "$MNV_PON")
   fi
 

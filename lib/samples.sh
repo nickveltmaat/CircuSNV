@@ -333,7 +333,7 @@ print_run_plan() {
   steps+=" -> merge (called by >= $Calls tool(s))"
   [[ -n "$PoN" ]] && steps+=" -> PoN filter"
   [[ "$UNMET" == "true" ]] && steps+=" -> UNMET filter (< $UNMET_THRESHOLD)"
-  [[ "$MNV" == "true" ]] && steps+=" -> MNV calling (MNVista)"
+  [[ "$MNV" == "true" ]] && steps+=" -> MNV calling (MNVista, MNV PoN: ${MNV_PON:-off})"
   steps+=" -> annotation (OpenCRAVAT) -> post-filtering"
   [[ "${Matched,,}" == "true" ]] && steps+=" -> matched-control read counts"
   steps+=" -> final annotation"

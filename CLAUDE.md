@@ -33,9 +33,10 @@ Een betere, efficiëntere en gebruiksvriendelijkere versie van CircuSNV maken, i
   aan te passen met `--config`). Kan niet lokaal draaien. Er is geen lokale testsuite;
   vergelijkende tests tegen een referentierun draait Nick op Nibbler volgens `docs/nibbler-test.md`
   (vergelijkingsscript in `tests/nibbler/`).
-- Het script zoekt zijn installatiemap zelf (ook onder `sbatch`); `env/`, `MNVista`,
-  `MNV_PoN_No_overlap_new.txt`, de UNMET-bed en de PoN-werkmap `PoN/` staan daar. Relatieve
-  invoerpaden en `-O` gelden vanaf de map waar de pipeline gestart wordt.
+- Het script zoekt zijn installatiemap zelf (ook onder `sbatch`); `env/`, `MNVista`, de UNMET-bed
+  en de PoN-werkmap `PoN/` staan daar. Een MNV panel of normals (MNVista `-C`) staat standaard uit
+  en wordt alleen gebruikt met `--mnv-pon FILE`, los van `-P`. Relatieve invoerpaden en `-O`
+  gelden vanaf de map waar de pipeline gestart wordt.
 - Niet in de repo: `env/`, `MNVista`, `MNV_PoN_No_overlap_new.txt`, de vooraf gebouwde tools
   (LoFreq, SiNVICT, bam-readcount).
 - Genoombuild hg38 is hardcoded.
@@ -44,6 +45,8 @@ Een betere, efficiëntere en gebruiksvriendelijkere versie van CircuSNV maken, i
   (zo was `isec_to_vcf.py` in git verouderd, gesynchroniseerd in PR #6). Verschilt een
   Nibbler-vergelijking, controleer dan eerst of de clusterbestanden van git afwijken
   (`diff --strip-trailing-cr -wB`, shebangs negeren) voordat je de nieuwe code verdenkt.
+  Productie gebruikt bij `-P` en `-H true` altijd `MNV_PoN_No_overlap_new.txt`; geef voor een
+  vergelijking dan `--mnv-pon <install>/MNV_PoN_No_overlap_new.txt` mee aan de nieuwe run.
 - Bij verschillen tussen README en code geldt het gedrag van de code. Open beslissingen staan in
   `docs/known-issues.md`, gepland werk in `docs/roadmap.md`.
 

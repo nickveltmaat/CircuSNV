@@ -1,6 +1,7 @@
 # shellcheck shell=bash
 # Settings that used to be hard-coded in the pipeline: environment modules, resource locations
-# and fixed thresholds. The defaults below reproduce the original behaviour exactly.
+# and fixed thresholds. The defaults below reproduce the original behaviour exactly, except
+# MNV_PON, which is off by default (the original always used it together with -P).
 # Sourced by CircuSNV.sh; uses its global settings.
 
 apply_default_config() {
@@ -20,7 +21,7 @@ apply_default_config() {
   ENV_DIR="$CIRCUSNV_HOME/env"
   PON_DIR="$CIRCUSNV_HOME/PoN"
   MNVISTA="$CIRCUSNV_HOME/MNVista"
-  MNV_PON="$CIRCUSNV_HOME/MNV_PoN_No_overlap_new.txt"
+  MNV_PON=""                    # MNV panel of normals for MNVista -C; empty = off (--mnv-pon)
   UNMET_BED="$CIRCUSNV_HOME/hg38_genome.UNMET_bin10bp.bed"
   UNMET_URL_BASE="http://web16.kazusa.or.jp/data/hg38"
 
