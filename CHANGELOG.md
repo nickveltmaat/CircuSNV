@@ -3,7 +3,13 @@
 ## 2.0.0-dev (unreleased)
 
 A restructured version with the same scientific behaviour: the callers, filters, thresholds
-and output files are unchanged unless listed under "Fixes".
+and output files are unchanged unless listed under "Behaviour changes" or "Fixes".
+
+### Behaviour changes
+- The MNV panel of normals is off by default and is used only with `--mnv-pon FILE`. Before,
+  MNVista always got `MNV_PoN_No_overlap_new.txt` from the installation directory whenever
+  `-P` was given; now `-P` is only the PoN for the SNV calls. To get the old MNV results with
+  `-P`, add `--mnv-pon <install>/MNV_PoN_No_overlap_new.txt`.
 
 ### Structure
 - `CircuSNV.sh` is a short entry point; the code lives in `lib/` (one module per stage) and
@@ -24,8 +30,7 @@ and output files are unchanged unless listed under "Fixes".
 - Timestamped output and a log file per run in `<output>/.circusnv/`.
 - `--resume` skips samples that finished in an earlier run; `--cleanup` removes
   intermediate files after each sample; `--threads` sets the thread count.
-- `--mnv-pon` sets the MNV panel of normals, which was a fixed file in the installation
-  directory.
+- `--mnv-pon` sets the MNV panel of normals (see "Behaviour changes").
 
 ### Robustness
 - The pipeline runs with `set -euo pipefail`. The exit status of every caller is checked, for
@@ -40,8 +45,8 @@ and output files are unchanged unless listed under "Fixes".
 - A BAM index could be taken for present when another sample's name started the same way.
 - Retries of a caller failed on files left by the previous attempt.
 - LoFreq's temporary BAM stayed behind when LoFreq failed.
-- A missing MNV panel of normals (`-H true` with `-P`) stops the run before it starts; it
-  was only a warning.
+- A missing MNV panel of normals (a `--mnv-pon` file that does not exist, with `-H true`)
+  stops the run before it starts; before, MNVista got the missing file without a warning.
 - `isec_to_vcf.py` is now the version that runs on the cluster. The version in git was older:
   it wrote the MNV input without AF, DP and MRD as INFO fields, which gave different MNV
   results. The contigs in its VCF headers are now sorted.
