@@ -6,13 +6,18 @@
 # filtered), <sample>_<Tool>.vcf.gz (+ .csi, all filters, normalised) and copies its
 # unfiltered intermediate VCF into <output_dir>/mnvcalling for MNV calling.
 
-# Normalize, atomize, compress and index a filtered VCF. Writes <output_vcf>.gz (+ .csi);
-# the records are the same as when the plain VCF was written first and then bgzipped.
+# Normalize, atomize, restrict to the panel, compress and index a filtered VCF. Writes
+# <output_vcf>.gz (+ .csi). Normalisation can move a record to the edge of a region, so the
+# panel restriction comes after it.
+# Usage: process_vcf <input.vcf[.gz]> <output.vcf> <label for the log>
 process_vcf() {
   local input_vcf=$1
   local output_vcf=$2
+  local label=$3
 
-  bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$input_vcf" 2>/dev/null | bcftools norm -d all -O z -o "${output_vcf}.gz" 2>/dev/null
+  bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$input_vcf" 2>/dev/null | bcftools norm -d all -O z -o "${output_vcf}.unrestricted.gz" 2>/dev/null
+  restrict_to_regions "${output_vcf}.unrestricted.gz" "${output_vcf}.gz" "$REGIONS_PANEL" "$label"
+  rm -f "${output_vcf}.unrestricted.gz"
   bcftools index -f "${output_vcf}.gz"
 }
 
@@ -34,7 +39,7 @@ Vardict() { #1: Input .bam file   #2 Output folder
 
     bgzip -c "$out/${base_name}_VarDict_RAW.vcf" > "$out/${base_name}_VarDict_inter.vcf.gz" && bcftools index -f "$out/${base_name}_VarDict_inter.vcf.gz" && cp "$out/${base_name}_VarDict_inter.vc"* "$out/mnvcalling"
     bcftools filter -O z -i "FORMAT/DP > ${RDP} & FORMAT/AF > ${VAF} & FORMAT/VD > ${MRD}" "$out/${base_name}_VarDict_inter.vcf.gz" > "$out/${base_name}_VarDict_inter2.vcf.gz" && \
-    process_vcf "$out/${base_name}_VarDict_inter2.vcf.gz" "$out/${base_name}_VarDict.vcf"
+    process_vcf "$out/${base_name}_VarDict_inter2.vcf.gz" "$out/${base_name}_VarDict.vcf" "$base_name VarDict"
     # Only VarDict's own intermediates: the callers run in parallel in the same directory
     rm -rf "$out/${base_name}_VarDict"*inter*.*
     echo -e "VarDict DONE for $base_name\n"
@@ -57,7 +62,7 @@ Mutect2() { #1: Input .bam file    #2: Output folder
 
     grep -v '^##contig=<ID=chrUn\|^##contig=<ID=HLA' "$out/${base_name}_M2_Fstats.vcf" | grep -v '_alt' | grep -v '_random' > "$out/${base_name}_M2_F2stats.vcf" && cp "$out/${base_name}_M2_F2stats.vc"* "$out/mnvcalling"
     bcftools filter -O z -i "FORMAT/DP > ${RDP} & FORMAT/AF > ${VAF} & FORMAT/AD[0:1] > ${MRD}" "$out/${base_name}_M2_F2stats.vcf" > "$out/${base_name}M2_F3stats.vcf.gz" && \
-    process_vcf "$out/${base_name}M2_F3stats.vcf.gz" "$out/${base_name}_Mutect2.vcf"
+    process_vcf "$out/${base_name}M2_F3stats.vcf.gz" "$out/${base_name}_Mutect2.vcf" "$base_name Mutect2"
 
     rm -rf "$out/${base_name}"*tats.*
     echo -e "Mutect2 DONE for $base_name\n"
@@ -115,7 +120,7 @@ Lofreq() { #1: Input .bam file    #2: Output folder
       "$out/${base_name}_LoFreq_inter.vcf.gz" \
       > "$out/${base_name}_LoFreq_inter2.vcf.gz" && \
     process_vcf "$out/${base_name}_LoFreq_inter2.vcf.gz" \
-                "$out/${base_name}_LoFreq.vcf" && \
+                "$out/${base_name}_LoFreq.vcf" "$base_name LoFreq" && \
 
     rm -f "$tmpbam" "$tmpbam.bai"
     rm -rf "$out/${base_name}_LoFreq_inter"*.*
@@ -189,7 +194,7 @@ Sinvict() { #1: Input .bam file    #2: Output folder
     bcftools index -f "$out/${base_name}_SiNVICT_inter_RAW.vcf.gz" && cp "$out/${base_name}_SiNVICT_inter_RAW.vc"* "$out/mnvcalling"
 
     bcftools filter -O z -i "FORMAT/DP > ${RDP} & FORMAT/VAF > ${VAF} & FORMAT/MDP > ${MRD}" "$out/${base_name}_SiNVICT_inter_RAW.vcf.gz" > "$out/${base_name}_SiNVICT_inter3.vcf.gz" && \
-    process_vcf "$out/${base_name}_SiNVICT_inter3.vcf.gz" "$out/${base_name}_SiNVICT.vcf"
+    process_vcf "$out/${base_name}_SiNVICT_inter3.vcf.gz" "$out/${base_name}_SiNVICT.vcf" "$base_name SiNVICT"
 
     rm -rf "$out/"*SiNVICT_inter* "$out/"*alls_level* "$out/"*bed_chunk_*
     echo -e "SiNVICT DONE for $base_name\n"

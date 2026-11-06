@@ -44,7 +44,7 @@ if [[ -z "${CIRCUSNV_HOME:-}" ]] && ! CIRCUSNV_HOME=$(locate_home); then
   exit 1
 fi
 
-for module in config args common checks callers filters annotate mnv pon samples; do
+for module in config args common checks regions callers filters annotate mnv pon samples; do
   source "$CIRCUSNV_HOME/lib/$module.sh"
 done
 
@@ -105,6 +105,8 @@ trap finish_run_log EXIT
 
 print_settings
 
+log "Regions"
+prepare_regions
 log "Panel of normals"
 prepare_pon
 log "Tumor samples"
