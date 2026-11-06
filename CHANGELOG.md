@@ -10,6 +10,13 @@ and output files are unchanged unless listed under "Behaviour changes" or "Fixes
   MNVista always got `MNV_PoN_No_overlap_new.txt` from the installation directory whenever
   `-P` was given; now `-P` is only the PoN for the SNV calls. To get the old MNV results with
   `-P`, add `--mnv-pon <install>/MNV_PoN_No_overlap_new.txt`.
+- The per-tool calls (main path and MNV input) are restricted to the regions of `-L`, after
+  normalisation: a call is kept when its REF span overlaps a region. LoFreq called on whole
+  reads that touch a region, so it reported positions up to a read length outside the panel,
+  and VarDict reported some calls within a few bases of a region. These calls are gone from
+  the per-tool VCFs, the merged lists, the MNV input and the final list. The run log shows
+  per sample and tool how many calls were removed. The normals of the panel of normals are
+  restricted the same way.
 
 ### Structure
 - `CircuSNV.sh` is a short entry point; the code lives in `lib/` (one module per stage) and
@@ -31,6 +38,10 @@ and output files are unchanged unless listed under "Behaviour changes" or "Fixes
 - `--resume` skips samples that finished in an earlier run; `--cleanup` removes
   intermediate files after each sample; `--threads` sets the thread count.
 - `--mnv-pon` sets the MNV panel of normals (see "Behaviour changes").
+- `--mnv-flank-regions PATTERN` and `--mnv-flank-bp INT` (default 200): with `-H true`, the
+  regions whose last BED column matches the pattern are extended for calling and the MNV
+  input, so MNVista also sees variants in their flanks; the main results stay inside the
+  panel. `--dry-run` and the run log show how many regions match.
 
 ### Robustness
 - The pipeline runs with `set -euo pipefail`. The exit status of every caller is checked, for

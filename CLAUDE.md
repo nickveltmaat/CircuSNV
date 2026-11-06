@@ -11,9 +11,12 @@ Een betere, efficiëntere en gebruiksvriendelijkere versie van CircuSNV maken, i
 - `CircuSNV.sh` is het startscript (bash, met `#SBATCH`-kop): instellingen laden, argumenten
   valideren, controles vooraf, daarna PoN en samples. De code staat in `lib/`, één module per stap:
   `config.sh` (modules, resourcepaden, vaste waarden), `args.sh` (opties, help, validatie),
-  `common.sh` (logging, modules, venv), `checks.sh`, `callers.sh` (VarDict, Mutect2, LoFreq,
-  SiNVICT, retry-wrapper), `filters.sh` (UNMET), `annotate.sh` (OpenCRAVAT, matched control),
-  `mnv.sh` (MNVista), `pon.sh`, `samples.sh` (per sample, volgorde, resume).
+  `common.sh` (logging, modules, venv), `checks.sh`, `regions.sh` (panel-BED, MNV-flanking,
+  VCF beperken tot een BED), `callers.sh` (VarDict, Mutect2, LoFreq, SiNVICT, retry-wrapper),
+  `filters.sh` (UNMET), `annotate.sh` (OpenCRAVAT, matched control), `mnv.sh` (MNVista),
+  `pon.sh`, `samples.sh` (per sample, volgorde, resume).
+- Per-tool calls worden na normalisatie beperkt tot de panel-BED (hoofdpad en normals van de
+  PoN) of tot de MNV-BED (MNV-invoer, met optionele flanking via `--mnv-flank-regions`).
 - Volgorde per sample: 4 callers parallel → samenvoegen met `bcftools isec` → PoN- en
   UNMET-filtering → optioneel MNV-calling → annotatie met OpenCRAVAT → post-filtering → tweede
   annotatie.

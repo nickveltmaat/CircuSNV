@@ -28,6 +28,22 @@ group's `/groups/<group>/tmp*/` area, `<install>` is your current CircuSNV insta
 `Result: IDENTICAL` means the new version reproduces the reference. If `python3` is not found
 in step 10, load the Python module that the env was built with first.
 
+## Calls outside the panel
+
+Since the panel restriction (D15 in `docs/known-issues.md`), a run with `-H true` should have no
+MNV input outside the BED. Count per tool combination and per distance to the nearest region
+(counts only, safe to share):
+
+    bash tests/nibbler/off_target_check.sh <output>/<sample>/mnvcalling/sites.txt <regions.bed>
+
+A reference run of the production pipeline shows the records that are now removed; the new run
+should report 0 (exit status 0). With `--mnv-flank-regions`, check the MNV input against
+`<output>/.circusnv/regions/mnv.bed` instead: records in the flanks are then expected outside
+the panel BED. The run log lists per sample and tool how many calls were removed
+(`grep 'record(s) removed' CircuSNV.out`). Compared with a reference run, `compare_outputs.py`
+then shows fewer records in the per-tool VCFs, `isec/`, `mnvcalling/` and possibly the final
+list: those are the calls outside the panel.
+
 ## Only if there are differences
 
 Differences can come from the new code, or from things that changed since the reference run

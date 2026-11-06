@@ -65,6 +65,9 @@ Starting points:
 - Run samples in parallel, or as a Slurm job array, instead of one after the other. Follow-up
   samples need the MNV results of their baseline (`-X`), so those have to wait for it.
 - D11: the first OpenCRAVAT run uses all annotators while post-filtering needs only a few.
+- D15: LoFreq calls on whole reads, up to a read length outside the panel, and those calls
+  are thrown away afterwards. `lofreq call-parallel -l <bed>` would skip them, but changes
+  LoFreq's Bonferroni correction and so the calls inside the panel; it needs a comparison.
 - Measure first: log the duration of every step per sample, so the slowest steps are known.
 - Skip work that is not needed for the chosen options, and avoid writing and reading the same
   intermediate files more than once.
