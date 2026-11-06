@@ -80,6 +80,7 @@ Strand Bias: $SB
 MultiNucleotide Variant Calling: $MNV
 Bayesian Prior for MNV calling: $PRIOR
 MNV panel of normals: ${MNV_PON:-off}
+MNV flank regions: ${MNV_FLANK_REGIONS:-off} (${MNV_FLANK_BP} bp)
 Crosslink Table: $CrosslinkTable
 Matched Control Logic: $Matched
 UNMET & repeat filtering: $UNMET
