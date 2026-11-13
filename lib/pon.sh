@@ -30,11 +30,12 @@ prepare_pon() {
       ensure_bam_index "$healthycontrol" "$MODULE_SAMTOOLS_PON"
 
       # The four callers run in parallel, with the same retry wrapper as the tumor samples;
-      # the panel is only usable when every caller succeeded for every normal.
+      # the panel is only usable when every caller succeeded for every normal. The normals
+      # always use the panel as given, without MNV flanking.
       local caller status i
       local pids=() callers=(Vardict Mutect2 Lofreq Sinvict)
       for caller in "${callers[@]}"; do
-        run_caller_with_retries "$caller" "$healthycontrol" "$PON_DIR/$samplename/" 3 10 & pids+=($!)
+        run_caller_with_retries "$caller" "$healthycontrol" "$PON_DIR/$samplename/" "$Listregions" 3 10 & pids+=($!)
       done
       for i in "${!pids[@]}"; do
         status=0

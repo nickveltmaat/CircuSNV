@@ -14,6 +14,8 @@ set_default_options() {
   SB="0.9"             # strand-bias threshold
   MNV="false"          # multi-nucleotide variant calling
   PRIOR="0.5"          # Bayesian prior for MNVista
+  MNV_FLANK_REGIONS="" # ERE on the last BED column: regions flanked for MNV calling (empty = off)
+  MNV_FLANK_BP="200"   # bases added on each side of those regions
   CrosslinkTable=""    # TSV file for crosslinking (empty = off)
   Matched="false"      # matched-control logic
   UNMET="false"        # UNMET score and repeat filtering
@@ -68,6 +70,10 @@ Optional analyses:
   -B, --mnv-prior NUM          Bayesian prior for MNVista              (default: $PRIOR)
       --mnv-pon FILE           MNV panel of normals for MNVista (its -C option); independent
                                of -P                                   (default: ${MNV_PON:-off})
+      --mnv-flank-regions ERE  with -H true: extend the regions whose last BED column matches
+                               ERE, so the callers and the MNV input also cover their flanks;
+                               the main results stay inside the panel  (default: ${MNV_FLANK_REGIONS:-off})
+      --mnv-flank-bp INT       bases added on each side of those regions (default: $MNV_FLANK_BP)
   -X, --crosslink-table FILE   TSV: samplename, timepoint (baseline/follow-up),
                                corresponding_baseline, matched_control
   -T, --matched-control true|false
@@ -147,7 +153,7 @@ parse_args() {
       -I|--input|-R|--reference|-L|--regions|-V|--min-vaf|-D|--min-depth|-C|--min-callers|\
       -P|--pon|-Q|--min-base-quality|-M|--min-alt-reads|-S|--strand-bias|-H|--mnv|\
       -B|--mnv-prior|-X|--crosslink-table|-T|--matched-control|-U|--unmet|-O|--output|\
-      --mnv-pon|--threads|--config)
+      --mnv-pon|--mnv-flank-regions|--mnv-flank-bp|--threads|--config)
         [[ $# -ge 2 ]] || die_usage "option $opt needs a value"
         val=$2
         shift 2
@@ -169,6 +175,8 @@ parse_args() {
       -H|--mnv) MNV=$val;;
       -B|--mnv-prior) PRIOR=$val;;
       --mnv-pon) MNV_PON=$val;;
+      --mnv-flank-regions) MNV_FLANK_REGIONS=$val;;
+      --mnv-flank-bp) MNV_FLANK_BP=$val;;
       -X|--crosslink-table) CrosslinkTable=$val;;
       -T|--matched-control) Matched=$val;;
       -U|--unmet) UNMET=$val;;
@@ -225,6 +233,22 @@ validate_args() {
   { is_number "$SB" && ! in_range "$SB" 0 0; } || errors+=("-S/--strand-bias must be a number above 0 (got '$SB')")
   { is_number "$PRIOR" && in_range "$PRIOR" 0 1; } || errors+=("-B/--mnv-prior must be a number between 0 and 1 (got '$PRIOR')")
   { is_int "$THREADS" && (( THREADS >= 1 )); } || errors+=("--threads must be a whole number of at least 1 (got '$THREADS')")
+  is_int "$MNV_FLANK_BP" || errors+=("--mnv-flank-bp must be a whole number (got '$MNV_FLANK_BP')")
+  if [[ -n "$MNV_FLANK_REGIONS" ]]; then
+    # The pattern is passed through the environment: awk -v would interpret its backslashes
+    if ! FLANK_PATTERN="$MNV_FLANK_REGIONS" awk 'BEGIN { if ("" ~ ENVIRON["FLANK_PATTERN"]) n = 1 }' 2>/dev/null; then
+      errors+=("--mnv-flank-regions is not a valid extended regular expression: '$MNV_FLANK_REGIONS'")
+    fi
+    if [[ -f "$Listregions" ]] && (( $(bed_min_columns "$Listregions") < 4 )); then
+      errors+=("--mnv-flank-regions needs a regions BED with at least 4 columns; the pattern is matched against the last column: $Listregions")
+    fi
+    if [[ "$MNV" == "true" && -f "$Reference" && ! -f "$Reference.fai" ]]; then
+      errors+=("--mnv-flank-regions needs the reference index $Reference.fai (create it with: samtools faidx $Reference)")
+    fi
+    if [[ "$MNV" != "true" ]]; then
+      echo "WARNING: --mnv-flank-regions only applies with -H true; it is ignored" >&2
+    fi
+  fi
 
   [[ "$MNV" == "true" || "$MNV" == "false" ]] || errors+=("-H/--mnv must be 'true' or 'false' (got '$MNV')")
   [[ "$UNMET" == "true" || "$UNMET" == "false" ]] || errors+=("-U/--unmet must be 'true' or 'false' (got '$UNMET')")

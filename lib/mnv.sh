@@ -2,13 +2,16 @@
 # Multi-nucleotide variant (MNV) input generation and MNVista calls.
 # Sourced by CircuSNV.sh; uses its global settings.
 
-# Normalize and atomize one tool's unfiltered VCF for MNV calling; keeps the plain VCF and
-# writes a compressed, indexed copy next to it.
-# Usage: normalize_for_mnv <output.vcf> <input.vcf.gz>
+# Normalize and atomize one tool's unfiltered VCF for MNV calling and restrict it to the MNV
+# regions; keeps the plain VCF and writes a compressed, indexed copy next to it.
+# Usage: normalize_for_mnv <output.vcf> <label for the log> <input.vcf.gz>
 normalize_for_mnv() {
   local output_vcf=$1
-  shift
-  bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$@" 2>/dev/null | bcftools norm -d all > "$output_vcf" 2>/dev/null
+  local label=$2
+  shift 2
+  bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$@" 2>/dev/null | bcftools norm -d all > "$output_vcf.unrestricted" 2>/dev/null
+  restrict_to_regions "$output_vcf.unrestricted" "$output_vcf" "$REGIONS_MNV" "$label"
+  rm -f "$output_vcf.unrestricted"
   bgzip -c "$output_vcf" > "$output_vcf.gz"
   bcftools index -f "$output_vcf.gz"
 }
@@ -28,10 +31,10 @@ generate_mnv_input() {
 
     # The four tools are independent: normalize, compress and index them in parallel
     local pids=() pid
-    normalize_for_mnv "$mnvpath/VarDict_MNV.vcf" "$mnvpath/"*VarDict_inter.vcf.gz & pids+=($!)
-    normalize_for_mnv "$mnvpath/Mutect2_MNV.vcf" "$mnvpath/"*M2_F2stats.vcf.gz & pids+=($!)
-    normalize_for_mnv "$mnvpath/LoFreq_MNV.vcf" "$mnvpath/"*LoFreq_inter.vcf.gz & pids+=($!)
-    normalize_for_mnv "$mnvpath/SiNVICT_MNV.vcf" "$mnvpath/"*SiNVICT_inter_RAW.vcf.gz & pids+=($!)
+    normalize_for_mnv "$mnvpath/VarDict_MNV.vcf" "$samplename MNV input VarDict" "$mnvpath/"*VarDict_inter.vcf.gz & pids+=($!)
+    normalize_for_mnv "$mnvpath/Mutect2_MNV.vcf" "$samplename MNV input Mutect2" "$mnvpath/"*M2_F2stats.vcf.gz & pids+=($!)
+    normalize_for_mnv "$mnvpath/LoFreq_MNV.vcf" "$samplename MNV input LoFreq" "$mnvpath/"*LoFreq_inter.vcf.gz & pids+=($!)
+    normalize_for_mnv "$mnvpath/SiNVICT_MNV.vcf" "$samplename MNV input SiNVICT" "$mnvpath/"*SiNVICT_inter_RAW.vcf.gz & pids+=($!)
     for pid in "${pids[@]}"; do
       wait "$pid"
     done

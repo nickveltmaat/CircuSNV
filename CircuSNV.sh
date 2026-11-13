@@ -44,7 +44,7 @@ if [[ -z "${CIRCUSNV_HOME:-}" ]] && ! CIRCUSNV_HOME=$(locate_home); then
   exit 1
 fi
 
-for module in config args common checks callers filters annotate mnv pon samples; do
+for module in config args common checks regions callers filters annotate mnv pon samples; do
   source "$CIRCUSNV_HOME/lib/$module.sh"
 done
 
@@ -80,6 +80,7 @@ Strand Bias: $SB
 MultiNucleotide Variant Calling: $MNV
 Bayesian Prior for MNV calling: $PRIOR
 MNV panel of normals: ${MNV_PON:-off}
+MNV flank regions: ${MNV_FLANK_REGIONS:-off} (${MNV_FLANK_BP} bp)
 Crosslink Table: $CrosslinkTable
 Matched Control Logic: $Matched
 UNMET & repeat filtering: $UNMET
@@ -105,6 +106,8 @@ trap finish_run_log EXIT
 
 print_settings
 
+log "Regions"
+prepare_regions
 log "Panel of normals"
 prepare_pon
 log "Tumor samples"

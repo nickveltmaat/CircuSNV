@@ -25,11 +25,13 @@ tool_problems() {
   if [[ -n "$PoN" && -d "$PoN" ]]; then
     ( module load "$MODULE_SAMTOOLS_PON" >/dev/null 2>&1 || echo "cannot load module $MODULE_SAMTOOLS_PON" )
   fi
-  if [[ "$UNMET" == "true" ]]; then
+  if [[ "$UNMET" == "true" ]] || mnv_flank_active; then
     (
       module load "$MODULE_BEDTOOLS" >/dev/null 2>&1 || echo "cannot load module $MODULE_BEDTOOLS"
       command -v bedtools >/dev/null 2>&1 || echo "command not found: bedtools"
     )
+  fi
+  if [[ "$UNMET" == "true" ]]; then
     if [[ ! -f "$UNMET_BED" ]]; then
       (
         command -v wget >/dev/null 2>&1 || echo "command not found: wget (needed to download the UNMET scores)"

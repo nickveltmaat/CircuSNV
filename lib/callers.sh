@@ -2,23 +2,30 @@
 # Variant callers (VarDict, Mutect2, LoFreq, SiNVICT), VCF normalisation and the retry wrapper.
 # Sourced by CircuSNV.sh; uses its global settings.
 #
-# Each caller takes <input.bam> <output_dir> and writes <sample>_<Tool>_RAW.vcf (strand-bias
-# filtered), <sample>_<Tool>.vcf.gz (+ .csi, all filters, normalised) and copies its
-# unfiltered intermediate VCF into <output_dir>/mnvcalling for MNV calling.
+# Each caller takes <input.bam> <output_dir> <regions.bed> and writes <sample>_<Tool>_RAW.vcf
+# (strand-bias filtered), <sample>_<Tool>.vcf.gz (+ .csi, all filters, normalised, restricted
+# to the panel) and copies its unfiltered intermediate VCF into <output_dir>/mnvcalling for MNV
+# calling. <regions.bed> is where the caller looks; with MNV flanking it is wider than the panel.
 
-# Normalize, atomize, compress and index a filtered VCF. Writes <output_vcf>.gz (+ .csi);
-# the records are the same as when the plain VCF was written first and then bgzipped.
+# Normalize, atomize, restrict to the panel, compress and index a filtered VCF. Writes
+# <output_vcf>.gz (+ .csi). Normalisation can move a record to the edge of a region, so the
+# panel restriction comes after it.
+# Usage: process_vcf <input.vcf[.gz]> <output.vcf> <label for the log>
 process_vcf() {
   local input_vcf=$1
   local output_vcf=$2
+  local label=$3
 
-  bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$input_vcf" 2>/dev/null | bcftools norm -d all -O z -o "${output_vcf}.gz" 2>/dev/null
+  bcftools norm -O v -m -any -f "$Reference" -a --atom-overlaps . -c w "$input_vcf" 2>/dev/null | bcftools norm -d all -O z -o "${output_vcf}.unrestricted.gz" 2>/dev/null
+  restrict_to_regions "${output_vcf}.unrestricted.gz" "${output_vcf}.gz" "$REGIONS_PANEL" "$label"
+  rm -f "${output_vcf}.unrestricted.gz"
   bcftools index -f "${output_vcf}.gz"
 }
 
-Vardict() { #1: Input .bam file   #2 Output folder
+Vardict() { #1: Input .bam file   #2 Output folder   #3 Regions BED
   local bam=$1
   local out=${2%/}
+  local regions=$3
   local base_name
   base_name=$(basename "$bam" .bam)
   echo "Analyzing ${base_name} with VarDict..."
@@ -26,7 +33,7 @@ Vardict() { #1: Input .bam file   #2 Output folder
     load_module "$MODULE_R"
     load_modules
 
-    vardict-java -th "$THREADS" -r 1 -G "$Reference" -f 0.00000000001 -N "$base_name" -I 20 -L 20 -Y 20 --nosv --deldupvar -q "$Qual" -Q "$Qual" -b "$bam" -c 1 -S 2 -E 3 -g 4 "$Listregions" | \
+    vardict-java -th "$THREADS" -r 1 -G "$Reference" -f 0.00000000001 -N "$base_name" -I 20 -L 20 -Y 20 --nosv --deldupvar -q "$Qual" -Q "$Qual" -b "$bam" -c 1 -S 2 -E 3 -g 4 "$regions" | \
     teststrandbias.R | var2vcf_valid.pl -S -N "$base_name" -E -f 0.00000000001 > "$out/${base_name}_VarDict_RAW_inter.vcf"
 
     bcftools filter -O v -i "(FORMAT/ALD[0:0]/FORMAT/ALD[0:1]) >= ${SB} & (FORMAT/ALD[0:0]/FORMAT/ALD[0:1]) <= ${SBU} & (INFO/ODDRATIO[0]) > 0 & INFO/PMEAN < 67" \
@@ -34,16 +41,17 @@ Vardict() { #1: Input .bam file   #2 Output folder
 
     bgzip -c "$out/${base_name}_VarDict_RAW.vcf" > "$out/${base_name}_VarDict_inter.vcf.gz" && bcftools index -f "$out/${base_name}_VarDict_inter.vcf.gz" && cp "$out/${base_name}_VarDict_inter.vc"* "$out/mnvcalling"
     bcftools filter -O z -i "FORMAT/DP > ${RDP} & FORMAT/AF > ${VAF} & FORMAT/VD > ${MRD}" "$out/${base_name}_VarDict_inter.vcf.gz" > "$out/${base_name}_VarDict_inter2.vcf.gz" && \
-    process_vcf "$out/${base_name}_VarDict_inter2.vcf.gz" "$out/${base_name}_VarDict.vcf"
+    process_vcf "$out/${base_name}_VarDict_inter2.vcf.gz" "$out/${base_name}_VarDict.vcf" "$base_name VarDict"
     # Only VarDict's own intermediates: the callers run in parallel in the same directory
     rm -rf "$out/${base_name}_VarDict"*inter*.*
     echo -e "VarDict DONE for $base_name\n"
   )
 }
 
-Mutect2() { #1: Input .bam file    #2: Output folder
+Mutect2() { #1: Input .bam file    #2: Output folder    #3 Regions BED
   local bam=$1
   local out=${2%/}
+  local regions=$3
   local base_name
   base_name=$(basename "$bam" .bam)
   echo "Analyzing ${base_name} with Mutect2..."
@@ -51,22 +59,23 @@ Mutect2() { #1: Input .bam file    #2: Output folder
     load_module "$MODULE_GATK"
     load_modules
 
-    gatk --java-options "-Xmx$MUTECT2_JAVA_MEM" Mutect2 --QUIET --verbosity ERROR --create-output-variant-index false --native-pair-hmm-threads "$THREADS" --min-base-quality-score "$Qual" --callable-depth 10 --minimum-allele-fraction 0.00000000001 -R "$Reference" -I "$bam" -O "$out/${base_name}_Mutect2_RAW.vcf" -L "$Listregions" && \
+    gatk --java-options "-Xmx$MUTECT2_JAVA_MEM" Mutect2 --QUIET --verbosity ERROR --create-output-variant-index false --native-pair-hmm-threads "$THREADS" --min-base-quality-score "$Qual" --callable-depth 10 --minimum-allele-fraction 0.00000000001 -R "$Reference" -I "$bam" -O "$out/${base_name}_Mutect2_RAW.vcf" -L "$regions" && \
     gatk FilterMutectCalls --QUIET --verbosity ERROR --create-output-variant-index false --min-allele-fraction 0.00000000001 -R "$Reference" -V "$out/${base_name}_Mutect2_RAW.vcf" -O "$out/${base_name}_M2_Fstats1.vcf"
     bcftools filter -O v -i "(FORMAT/SB[0:2]/FORMAT/SB[0:3]) >= ${SB} & (FORMAT/SB[0:2]/FORMAT/SB[0:3]) <= ${SBU}" "$out/${base_name}_M2_Fstats1.vcf" > "$out/${base_name}_M2_Fstats.vcf"
 
     grep -v '^##contig=<ID=chrUn\|^##contig=<ID=HLA' "$out/${base_name}_M2_Fstats.vcf" | grep -v '_alt' | grep -v '_random' > "$out/${base_name}_M2_F2stats.vcf" && cp "$out/${base_name}_M2_F2stats.vc"* "$out/mnvcalling"
     bcftools filter -O z -i "FORMAT/DP > ${RDP} & FORMAT/AF > ${VAF} & FORMAT/AD[0:1] > ${MRD}" "$out/${base_name}_M2_F2stats.vcf" > "$out/${base_name}M2_F3stats.vcf.gz" && \
-    process_vcf "$out/${base_name}M2_F3stats.vcf.gz" "$out/${base_name}_Mutect2.vcf"
+    process_vcf "$out/${base_name}M2_F3stats.vcf.gz" "$out/${base_name}_Mutect2.vcf" "$base_name Mutect2"
 
     rm -rf "$out/${base_name}"*tats.*
     echo -e "Mutect2 DONE for $base_name\n"
   )
 }
 
-Lofreq() { #1: Input .bam file    #2: Output folder
+Lofreq() { #1: Input .bam file    #2: Output folder    #3 Regions BED
   local bam=$1
   local out=${2%/}
+  local regions=$3
   local base_name
   base_name=$(basename "$bam" .bam)
   echo "Analyzing ${base_name} with LoFreq..."
@@ -74,12 +83,14 @@ Lofreq() { #1: Input .bam file    #2: Output folder
     load_modules
     load_module "$MODULE_SAMTOOLS"
 
-    # Temporary BAM with only the reads in the target regions
+    # Temporary BAM with only the reads that touch the target regions. LoFreq then calls on
+    # the whole of these reads, so it also reports positions up to a read length outside the
+    # regions; process_vcf and the MNV input remove those afterwards.
     local tmpbam
     tmpbam=$(mktemp --suffix=.bam "$out/${base_name}_regions_XXXX")
     # Remove the temporary BAM also when a step below fails
     trap 'rm -f "$tmpbam" "$tmpbam.bai"' EXIT
-    samtools view -b -M -L "$Listregions" "$bam" -o "$tmpbam"
+    samtools view -b -M -L "$regions" "$bam" -o "$tmpbam"
     samtools index "$tmpbam"
 
     # 1) one multi-threaded LoFreq run on the subset BAM
@@ -115,7 +126,7 @@ Lofreq() { #1: Input .bam file    #2: Output folder
       "$out/${base_name}_LoFreq_inter.vcf.gz" \
       > "$out/${base_name}_LoFreq_inter2.vcf.gz" && \
     process_vcf "$out/${base_name}_LoFreq_inter2.vcf.gz" \
-                "$out/${base_name}_LoFreq.vcf" && \
+                "$out/${base_name}_LoFreq.vcf" "$base_name LoFreq" && \
 
     rm -f "$tmpbam" "$tmpbam.bai"
     rm -rf "$out/${base_name}_LoFreq_inter"*.*
@@ -132,9 +143,10 @@ run_bam_readcount() {
   bam-readcount -l "$chunk_file" -w 1 -b "$Qual" -f "$Reference" "$bam" 2>/dev/null > "$output_file"
 }
 
-Sinvict() { #1: Input .bam file    #2: Output folder
+Sinvict() { #1: Input .bam file    #2: Output folder    #3 Regions BED
   local bam=$1
   local out=${2%/}
+  local regions=$3
   local base_name chunk_file header_lines
   base_name=$(basename "$bam" .bam)
   echo "Analyzing ${base_name} with bam-readcount && SiNVICT..."
@@ -147,11 +159,11 @@ Sinvict() { #1: Input .bam file    #2: Output folder
 
   # Split the BED file into N chunks (excluding the header lines) and add the header lines back to each chunk
   # (grep exits 1 when the BED has no header lines; that is not an error)
-  header_lines=$( { grep -P "^browser|^track" "$Listregions" || true; } | wc -l)
-  tail -n +$((header_lines + 1)) "$Listregions" | split -l $((($(wc -l < "$Listregions") - header_lines) / N + 1)) -d -a 2 --additional-suffix=.bed - "$out/bed_chunk_"
+  header_lines=$( { grep -P "^browser|^track" "$regions" || true; } | wc -l)
+  tail -n +$((header_lines + 1)) "$regions" | split -l $((($(wc -l < "$regions") - header_lines) / N + 1)) -d -a 2 --additional-suffix=.bed - "$out/bed_chunk_"
 
   for chunk_file in "$out/bed_chunk_"*.bed; do
-    { grep -P "^browser|^track" "$Listregions" || true; cat "$chunk_file"; } > "${chunk_file}.tmp"
+    { grep -P "^browser|^track" "$regions" || true; cat "$chunk_file"; } > "${chunk_file}.tmp"
     mv "${chunk_file}.tmp" "$chunk_file"
   done
 
@@ -189,7 +201,7 @@ Sinvict() { #1: Input .bam file    #2: Output folder
     bcftools index -f "$out/${base_name}_SiNVICT_inter_RAW.vcf.gz" && cp "$out/${base_name}_SiNVICT_inter_RAW.vc"* "$out/mnvcalling"
 
     bcftools filter -O z -i "FORMAT/DP > ${RDP} & FORMAT/VAF > ${VAF} & FORMAT/MDP > ${MRD}" "$out/${base_name}_SiNVICT_inter_RAW.vcf.gz" > "$out/${base_name}_SiNVICT_inter3.vcf.gz" && \
-    process_vcf "$out/${base_name}_SiNVICT_inter3.vcf.gz" "$out/${base_name}_SiNVICT.vcf"
+    process_vcf "$out/${base_name}_SiNVICT_inter3.vcf.gz" "$out/${base_name}_SiNVICT.vcf" "$base_name SiNVICT"
 
     rm -rf "$out/"*SiNVICT_inter* "$out/"*alls_level* "$out/"*bed_chunk_*
     echo -e "SiNVICT DONE for $base_name\n"
@@ -197,11 +209,12 @@ Sinvict() { #1: Input .bam file    #2: Output folder
 }
 
 # Retry wrapper: run a caller and ensure expected files exist, retry if necessary.
-# Usage: run_caller_with_retries <CallerName> <bam> <outdir> [max_attempts] [sleep_seconds]
+# Usage: run_caller_with_retries <CallerName> <bam> <outdir> <regions.bed> [max_attempts] [sleep_seconds]
 run_caller_with_retries() {
   local caller="$1"; shift
   local bam="$1"; shift
   local outdir="${1%/}"; shift
+  local regions="$1"; shift
   local max_attempts="${1:-3}"; shift || true
   local sleep_seconds="${1:-10}"; shift || true
 
@@ -236,7 +249,7 @@ run_caller_with_retries() {
 
     # Call the function if present, otherwise call as external command
     if declare -F "$caller" >/dev/null 2>&1; then
-      if ! "$caller" "$bam" "$outdir"; then
+      if ! "$caller" "$bam" "$outdir" "$regions"; then
         echo "[${caller}] returned non-zero exit on attempt $attempt"
       fi
     else
@@ -244,7 +257,7 @@ run_caller_with_retries() {
         echo "[${caller}] not found as function or external command" >&2
         return 2
       fi
-      if ! "$caller" "$bam" "$outdir"; then
+      if ! "$caller" "$bam" "$outdir" "$regions"; then
         echo "[${caller}] external command returned non-zero exit on attempt $attempt"
       fi
     fi

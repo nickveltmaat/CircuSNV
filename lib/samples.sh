@@ -21,11 +21,12 @@ run_tumor_sample() {
 
   echo "Variant calling in tumor sample..."
 
-  # Launch all callers in the background; each retries internally
-  run_caller_with_retries Vardict "$bam_file" "$sample_dir/" 3 10 & pid_vardict=$!
-  run_caller_with_retries Mutect2 "$bam_file" "$sample_dir/" 3 10 & pid_mutect2=$!
-  run_caller_with_retries Lofreq "$bam_file" "$sample_dir/" 3 10 & pid_lofreq=$!
-  run_caller_with_retries Sinvict "$bam_file" "$sample_dir/" 3 10 & pid_sinvict=$!
+  # Launch all callers in the background; each retries internally. With MNV flanking they run
+  # on the flanked regions; their main output is restricted to the panel afterwards.
+  run_caller_with_retries Vardict "$bam_file" "$sample_dir/" "$REGIONS_CALLING" 3 10 & pid_vardict=$!
+  run_caller_with_retries Mutect2 "$bam_file" "$sample_dir/" "$REGIONS_CALLING" 3 10 & pid_mutect2=$!
+  run_caller_with_retries Lofreq "$bam_file" "$sample_dir/" "$REGIONS_CALLING" 3 10 & pid_lofreq=$!
+  run_caller_with_retries Sinvict "$bam_file" "$sample_dir/" "$REGIONS_CALLING" 3 10 & pid_sinvict=$!
 
   # Wait for all to finish and capture exit statuses
   # ('wait' returns the job's exit status; capture it instead of letting set -e stop here)
@@ -328,6 +329,9 @@ print_run_plan() {
     echo "  $n. $name  ($bam)$note"
   done
   [[ "$CLEANUP" == "true" ]] && echo -e "\nIntermediate files are removed after each sample (--cleanup)."
+
+  echo -e "\nRegions: $(bed_data_lines "$Listregions" | wc -l) panel region(s); per-tool calls outside them are removed"
+  describe_mnv_flank
 
   steps="VarDict + Mutect2 + LoFreq + SiNVICT in parallel ($THREADS threads each)"
   steps+=" -> merge (called by >= $Calls tool(s))"

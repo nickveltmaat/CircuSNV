@@ -27,7 +27,10 @@ OpenCRAVAT.
 3. **Variant calling.** VarDict, Mutect2, LoFreq and SiNVICT run in parallel per sample, each
    with up to three attempts. Per caller, variants are filtered on strand bias (`-S`), read
    depth (`-D`), VAF (`-V`), supporting reads (`-M`) and base quality (`-Q`), then
-   normalised and atomised.
+   normalised, atomised and restricted to the regions of `-L`: a call is kept when its REF
+   span overlaps a region. (LoFreq calls on whole reads, VarDict near the region edges; both
+   used to report calls just outside the panel.) The run log shows per sample and tool how
+   many calls were removed.
 4. **Merging.** Variants called by at least `-C` tools are kept, the PoN blacklist is
    applied, and the depth, VAF and supporting reads of each tool are added back.
 5. **UNMET filter (optional, `-U true`).** Variants with an UNMET score of 0.90 or higher are
@@ -37,7 +40,12 @@ OpenCRAVAT.
 6. **MNV calling (optional, `-H true`).** MNVista runs on the unfiltered calls of all tools.
    With a crosslink table (`-X`), baselines are analysed first and each follow-up is analysed
    only at the SNVs that formed an MNV in its baseline. An MNV panel of normals is used only
-   when it is given with `--mnv-pon`; the PoN of `-P` is for the SNV calls.
+   when it is given with `--mnv-pon`; the PoN of `-P` is for the SNV calls. The MNV input is
+   restricted to the regions of `-L` too. With `--mnv-flank-regions PATTERN`, the regions
+   whose last BED column matches the pattern (an awk extended regular expression) are extended
+   by `--mnv-flank-bp` bases on each side: the callers then run on these wider regions and the
+   MNV input keeps calls in the flanks, while the main results stay inside the panel. The
+   panel of normals always uses the panel without flanks.
 7. **Annotation and post-filtering.** OpenCRAVAT annotates the variants;
    `scripts/post_filtering.py` removes synonymous, UTR, intronic and 2 kb up/downstream
    variants, variants with a population frequency above 0.01% in 1000 Genomes or gnomAD, and,
@@ -126,6 +134,8 @@ everything and see the plan without running anything.
 | `-H`, `--mnv` | `true`/`false` | MNV calling with MNVista | `false` |
 | `-B`, `--mnv-prior` | number | Bayesian prior for MNVista | `0.5` |
 | `--mnv-pon` | file | MNV panel of normals for MNVista (its `-C` option), independent of `-P` | off |
+| `--mnv-flank-regions` | pattern | with `-H true`: flank the regions whose last BED column matches this extended regular expression (needs a BED with at least 4 columns and `<reference>.fai`) | off |
+| `--mnv-flank-bp` | integer | bases added on each side of the flanked regions | `200` |
 | `-X`, `--crosslink-table` | file | crosslink table, see below | off |
 | `-T`, `--matched-control` | `true`/`false` | add matched-control read counts (needs `-X` and a directory `-I`) | `false` |
 | `-O`, `--output` | directory | main output directory | `./output` |
@@ -188,14 +198,14 @@ A tab-separated file without header:
 <output>/
 ├── <sample>/
 │   ├── <sample>_<Tool>_RAW.vcf         # per caller, after the strand-bias filter
-│   ├── <sample>_<Tool>.vcf.gz(.csi)    # per caller, all filters, normalised
+│   ├── <sample>_<Tool>.vcf.gz(.csi)    # per caller, all filters, normalised, inside the panel
 │   ├── isec/                           # merged calls (bcftools isec), PoN-filtered calls
 │   ├── mnvcalling/                     # MNV input and MNVista results (with -H true)
 │   ├── intermediate-files/             # merged variant lists and the first annotation
 │   ├── filtering-info/                 # variants left after each filter, removed variants
 │   ├── final-list/                     # annotated final variants (Excel and VCF)
 │   └── raw-data/                       # (empty, kept for compatibility)
-└── .circusnv/                          # run logs and resume markers
+└── .circusnv/                          # run logs, resume markers, regions/ (BEDs of the run)
 ```
 
 A sample without variants after post-filtering gets `NO_MUTS.txt` and an empty

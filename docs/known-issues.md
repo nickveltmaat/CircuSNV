@@ -104,6 +104,22 @@ behaviour. Items marked "decided" are done.
 - Option: sort other contigs after `chrY`, by name.
 - Status: to be decided by Nick.
 
+### D15. Per-tool calls outside the panel
+- LoFreq ran on a BAM of the reads that touch the panel (`samtools view -L`) without a region
+  restriction, so it called positions up to a read length (about 150 bp) outside the panel.
+  VarDict reported some calls within 5 bp of a region edge (after normalisation). In one
+  test sample the MNV input (`mnvcalling/sites.txt`) held 866 such records: 603 LoFreq only,
+  260 VarDict only, 2 LoFreq+VarDict and 1 SiNVICT+VarDict; Mutect2 (`-L`) had none. The
+  original pipeline (`e88243c`) did the same.
+- Decided and done: after normalisation, every per-tool VCF of the main path and the MNV input
+  is restricted to the panel (`bcftools view -T <bed> --targets-overlap 1`: the REF span must
+  overlap a region). Optional flanking for MNV calling: `--mnv-flank-regions`.
+- Not changed: LoFreq itself still calls on the whole reads. Restricting LoFreq to the regions
+  (`lofreq call-parallel -l`) would be faster, but it also lowers the number of tests in
+  LoFreq's Bonferroni correction and so changes which calls inside the panel pass; that is a
+  separate decision.
+- Check a run with `tests/nibbler/off_target_check.sh` (see `docs/nibbler-test.md`).
+
 ## To watch in the first test runs
 
 - **Exit codes that were never checked.** With strict error handling, a non-zero exit of
