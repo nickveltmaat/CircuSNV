@@ -32,7 +32,13 @@ OpenCRAVAT.
    used to report calls just outside the panel.) The run log shows per sample and tool how
    many calls were removed.
 4. **Merging.** Variants called by at least `-C` tools are kept, the PoN blacklist is
-   applied, and the depth, VAF and supporting reads of each tool are added back.
+   applied, and the depth, VAF and supporting reads of each tool are added back. The
+   blacklist removes exact allele matches; in addition, an indel is removed when the
+   blacklist has an indel with other alleles at the same position (`--pon-indel-match
+   position`, the default). Polymerase slippage in a short repeat often shows up as a
+   deletion in the normals and as an insertion in a tumor sample, both left-aligned to the
+   same anchor base. These removed indels are listed in
+   `merged_vcfs_PoN_indel_position_removed.txt` (in `intermediate-files/`) for review.
 5. **UNMET filter (optional, `-U true`).** Variants with an UNMET score of 0.90 or higher are
    removed. The 10-bp binned
    [UNMET scores](http://web16.kazusa.or.jp/data/hg38/hg38_genome.UNMET_bin10bp.tdf) are
@@ -130,6 +136,7 @@ everything and see the plan without running anything.
 | `-M`, `--min-alt-reads` | integer | minimum reads supporting a mutation | `3` |
 | `-S`, `--strand-bias` | number | the forward/reverse ratio of the supporting reads must lie between this value and its inverse | `0.9` |
 | `-P`, `--pon` | path | directory with normal BAMs, or a pre-made blacklist file | off |
+| `--pon-indel-match` | `position`/`allele` | `position`: an indel is also removed when the PoN has another indel at the same position; `allele`: exact alleles only, as in the original pipeline | `position` |
 | `-U`, `--unmet` | `true`/`false` | UNMET score and repeat-region filtering | `false` |
 | `-H`, `--mnv` | `true`/`false` | MNV calling with MNVista | `false` |
 | `-B`, `--mnv-prior` | number | Bayesian prior for MNVista | `0.5` |

@@ -120,6 +120,32 @@ behaviour. Items marked "decided" are done.
   separate decision.
 - Check a run with `tests/nibbler/off_target_check.sh` (see `docs/nibbler-test.md`).
 
+### D16. PoN filter for indels in short repeats
+- The PoN filter (`bcftools isec`, default `-c none`) removes exact allele matches only.
+  In short G/C stretches, polymerase slippage shows up in the normals mostly as a 1-bp
+  deletion and in some tumor samples as a 1-bp insertion, both left-aligned to the same anchor
+  base. The insertion was then kept: in a cohort run of November 2026, such insertions
+  (called by SiNVICT and VarDict) reached the final list in several samples, in BRAF, NUP214,
+  SMARCA4, SPEN, STAT5A, ARID1A and STAT6. The original pipeline did the same.
+- Decided and done: with a PoN, an indel is also removed when the blacklist has an indel with
+  other alleles at the same position (`--pon-indel-match position`, default; `allele` keeps
+  the old behaviour). Implemented as a filter on `merged_vcfs.txt` after the PoN step, not as
+  `bcftools isec -c indels`: with that option bcftools considers only the first indel per
+  position in each file, so a second indel at the same position could be lost without a PoN
+  hit. A dry run on that run's output removed only indels (94 sites, 326 sample-site pairs;
+  70 of the sites were 1-bp insertions, 57 occurred in two or more samples).
+- Risk: a real indel at a position where the normals show an artefact indel is removed too.
+  The removed indels are listed in `merged_vcfs_PoN_indel_position_removed.txt` for review.
+- Not changed: `bcftools norm -d all` in the per-tool normalisation keeps one record per
+  position, and VarDict (`var2vcf_valid.pl` without `-A`) reports only the strongest allele
+  per position. In a test sample this dropped about 3% of the Mutect2 and SiNVICT records.
+  Keeping all alleles (`-d exact`, VarDict `-A`) is a separate decision; the Mutect2 depth
+  filter (`FORMAT/AD[0:1]`) would then have to be applied after splitting multi-allelic
+  records.
+- No homopolymer filter yet: OpenCRAVAT's repeat annotator (RepeatMasker) does not cover
+  short stretches. A reference-based filter for 1-bp indels in homopolymers is an option if
+  artefacts without a PoN hit remain.
+
 ## To watch in the first test runs
 
 - **Exit codes that were never checked.** With strict error handling, a non-zero exit of

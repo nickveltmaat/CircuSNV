@@ -13,13 +13,14 @@ Een betere, efficiëntere en gebruiksvriendelijkere versie van CircuSNV maken, i
   `config.sh` (modules, resourcepaden, vaste waarden), `args.sh` (opties, help, validatie),
   `common.sh` (logging, modules, venv), `checks.sh`, `regions.sh` (panel-BED, MNV-flanking,
   VCF beperken tot een BED), `callers.sh` (VarDict, Mutect2, LoFreq, SiNVICT, retry-wrapper),
-  `filters.sh` (UNMET), `annotate.sh` (OpenCRAVAT, matched control), `mnv.sh` (MNVista),
+  `filters.sh` (UNMET, PoN-filter voor indels op positie), `annotate.sh` (OpenCRAVAT, matched
+  control), `mnv.sh` (MNVista),
   `pon.sh`, `samples.sh` (per sample, volgorde, resume).
 - Per-tool calls worden na normalisatie beperkt tot de panel-BED (hoofdpad en normals van de
   PoN) of tot de MNV-BED (MNV-invoer, met optionele flanking via `--mnv-flank-regions`).
-- Volgorde per sample: 4 callers parallel → samenvoegen met `bcftools isec` → PoN- en
-  UNMET-filtering → optioneel MNV-calling → annotatie met OpenCRAVAT → post-filtering → tweede
-  annotatie.
+- Volgorde per sample: 4 callers parallel → samenvoegen met `bcftools isec` → PoN-filtering
+  (exacte allelen, plus indels op een PoN-indelpositie, `--pon-indel-match`) → UNMET-filtering
+  → optioneel MNV-calling → annotatie met OpenCRAVAT → post-filtering → tweede annotatie.
 - Python-hulpscripts in `scripts/`, aangeroepen via de venv `env/` van de installatie:
   - `sinvict_to_vcf2.py`: SiNVICT-uitvoer naar VCF
   - `isec_to_vcf.py`: `bcftools isec`-sites naar VCF
