@@ -68,6 +68,11 @@ run_tumor_sample() {
     fi
   )
 
+  # Indels at a position where the PoN has an indel with other alleles
+  if [[ -n "$PoN" && "$PON_INDEL_MATCH" == "position" ]]; then
+    pon_indel_position_filter "$samplename" "$sample_dir/merged_vcfs.txt" "$PON_DIR/BLACKLIST_combined.vcf.gz"
+  fi
+
   # Filtering on UNMET score
   if [[ "$UNMET" == "true" ]]; then
     unmet_filter "$samplename" "$sample_dir/merged_vcfs.txt" "$UNMET_BED" "$UNMET_THRESHOLD" "UNMET filtering"
@@ -335,7 +340,11 @@ print_run_plan() {
 
   steps="VarDict + Mutect2 + LoFreq + SiNVICT in parallel ($THREADS threads each)"
   steps+=" -> merge (called by >= $Calls tool(s))"
-  [[ -n "$PoN" ]] && steps+=" -> PoN filter"
+  if [[ -n "$PoN" && "$PON_INDEL_MATCH" == "position" ]]; then
+    steps+=" -> PoN filter (indels also by position)"
+  elif [[ -n "$PoN" ]]; then
+    steps+=" -> PoN filter"
+  fi
   [[ "$UNMET" == "true" ]] && steps+=" -> UNMET filter (< $UNMET_THRESHOLD)"
   [[ "$MNV" == "true" ]] && steps+=" -> MNV calling (MNVista, MNV PoN: ${MNV_PON:-off})"
   steps+=" -> annotation (OpenCRAVAT) -> post-filtering"

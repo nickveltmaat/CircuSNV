@@ -9,6 +9,7 @@ set_default_options() {
   RDP=100              # minimum read depth
   Calls=1              # minimum number of callers
   PoN=""               # panel-of-normals path (empty = off)
+  PON_INDEL_MATCH="position" # PoN filter for indels: 'position' (any PoN indel at the anchor) or 'allele'
   Qual="25"            # minimum base quality
   MRD="3"              # minimum reads supporting a mutation
   SB="0.9"             # strand-bias threshold
@@ -63,6 +64,10 @@ Filters:
                                                                        (default: $SB)
   -P, --pon PATH               panel of normals: directory with normal BAMs, or a
                                pre-made blacklist (chrom pos ref alt, no header)
+      --pon-indel-match position|allele
+                               position: an indel is also removed when the PoN has another
+                               indel at the same position; allele: exact alleles only
+                                                                       (default: $PON_INDEL_MATCH)
   -U, --unmet true|false       filter on UNMET score and repeat regions (default: $UNMET)
 
 Optional analyses:
@@ -153,7 +158,7 @@ parse_args() {
       -I|--input|-R|--reference|-L|--regions|-V|--min-vaf|-D|--min-depth|-C|--min-callers|\
       -P|--pon|-Q|--min-base-quality|-M|--min-alt-reads|-S|--strand-bias|-H|--mnv|\
       -B|--mnv-prior|-X|--crosslink-table|-T|--matched-control|-U|--unmet|-O|--output|\
-      --mnv-pon|--mnv-flank-regions|--mnv-flank-bp|--threads|--config)
+      --pon-indel-match|--mnv-pon|--mnv-flank-regions|--mnv-flank-bp|--threads|--config)
         [[ $# -ge 2 ]] || die_usage "option $opt needs a value"
         val=$2
         shift 2
@@ -169,6 +174,7 @@ parse_args() {
       -D|--min-depth) RDP=$val;;
       -C|--min-callers) Calls=$val;;
       -P|--pon) PoN=$val;;
+      --pon-indel-match) PON_INDEL_MATCH=$val;;
       -Q|--min-base-quality) Qual=$val;;
       -M|--min-alt-reads) MRD=$val;;
       -S|--strand-bias) SB=$val;;
@@ -252,6 +258,7 @@ validate_args() {
 
   [[ "$MNV" == "true" || "$MNV" == "false" ]] || errors+=("-H/--mnv must be 'true' or 'false' (got '$MNV')")
   [[ "$UNMET" == "true" || "$UNMET" == "false" ]] || errors+=("-U/--unmet must be 'true' or 'false' (got '$UNMET')")
+  [[ "$PON_INDEL_MATCH" == "position" || "$PON_INDEL_MATCH" == "allele" ]] || errors+=("--pon-indel-match must be 'position' or 'allele' (got '$PON_INDEL_MATCH')")
   [[ "${Matched,,}" == "true" || "${Matched,,}" == "false" ]] || errors+=("-T/--matched-control must be 'true' or 'false' (got '$Matched')")
   if [[ "${Matched,,}" == "true" && -z "$CrosslinkTable" ]]; then
     errors+=("-T/--matched-control true needs -X/--crosslink-table with a matched_control column")

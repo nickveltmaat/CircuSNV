@@ -17,6 +17,13 @@ and output files are unchanged unless listed under "Behaviour changes" or "Fixes
   the per-tool VCFs, the merged lists, the MNV input and the final list. The run log shows
   per sample and tool how many calls were removed. The normals of the panel of normals are
   restricted the same way.
+- With a panel of normals, an indel is also removed when the PoN has an indel with other
+  alleles at the same position (`--pon-indel-match position`, the default). The PoN filter
+  compared exact alleles only, so a 1-bp insertion in a short G/C stretch passed when the
+  normals showed the opposite 1-bp deletion at the same anchor base (polymerase slippage).
+  SNVs and the MNV input are not affected. The removed indels are listed per sample in
+  `intermediate-files/merged_vcfs_PoN_indel_position_removed.txt`;
+  `--pon-indel-match allele` gives the old behaviour.
 
 ### Structure
 - `CircuSNV.sh` is a short entry point; the code lives in `lib/` (one module per stage) and
@@ -38,6 +45,8 @@ and output files are unchanged unless listed under "Behaviour changes" or "Fixes
 - `--resume` skips samples that finished in an earlier run; `--cleanup` removes
   intermediate files after each sample; `--threads` sets the thread count.
 - `--mnv-pon` sets the MNV panel of normals (see "Behaviour changes").
+- `--pon-indel-match position|allele` chooses how the PoN filter matches indels (see
+  "Behaviour changes"); the settings block shows the value.
 - `--mnv-flank-regions PATTERN` and `--mnv-flank-bp INT` (default 200): with `-H true`, the
   regions whose last BED column matches the pattern are extended for calling and the MNV
   input, so MNVista also sees variants in their flanks; the main results stay inside the

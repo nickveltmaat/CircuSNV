@@ -1,6 +1,39 @@
 # shellcheck shell=bash
-# UNMET score annotation and filtering.
+# UNMET score annotation and filtering, and the PoN filter for indels by position.
 # Sourced by CircuSNV.sh; uses its global settings.
+
+# Remove the indels of a merged variant list (chrom pos ref alt info) at a position where the
+# blacklist has an indel, whatever its alleles. The PoN filter itself (bcftools isec) only
+# removes exact allele matches, while polymerase slippage in a short repeat can show up as a
+# deletion in the normals and as an insertion in a tumor sample, both left-aligned to the same
+# anchor base. SNVs are not touched. The removed records are kept next to the list, in
+# <list>_PoN_indel_position_removed.txt, for review.
+# Usage: pon_indel_position_filter <samplename> <merged_vcfs.txt> <blacklist.vcf.gz>
+pon_indel_position_filter() {
+  local samp=$1 curr_file=$2 blacklist=$3
+  local removed="${curr_file%.txt}_PoN_indel_position_removed.txt"
+  local positions
+  positions=$(mktemp "${curr_file%.txt}.pon_indel_positions.XXXXXX")
+
+  # chrom<TAB>pos of every indel in the blacklist
+  (
+    load_modules
+    bcftools view -H "$blacklist" | awk -F '\t' 'length($4) != length($5) { print $1 "\t" $2 }' > "$positions"
+  )
+
+  echo "[$samp] PoN indel position filtering: variants before = $(wc -l < "$curr_file") ($(wc -l < "$positions") indel position(s) in the PoN)"
+  : > "$removed"
+  # FILENAME, not NR==FNR: the positions file may be empty
+  awk -F '\t' -v OFS='\t' -v posfile="$positions" -v removed="$removed" '
+    FILENAME == posfile { pon[$1 "\t" $2] = 1; next }
+    length($3) != length($4) && (($1 "\t" $2) in pon) { print > removed; next }
+    { print }
+  ' "$positions" "$curr_file" > "$curr_file.tmp"
+  mv "$curr_file.tmp" "$curr_file"
+  rm -f "$positions"
+
+  echo "[$samp] PoN indel position filtering: variants after  = $(wc -l < "$curr_file"); removed indels listed in $(basename "$removed")"
+}
 
 # Function to add UNMET score and filter 
 unmet_filter() {

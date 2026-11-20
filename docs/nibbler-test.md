@@ -16,7 +16,9 @@ group's `/groups/<group>/tmp*/` area, `<install>` is your current CircuSNV insta
    `ln -s <install>/MNVista MNVista`, `ln -s <install>/hg38_genome.UNMET_bin10bp.bed .`.
    The production pipeline always uses the MNV panel of normals when `-P` and `-H true` are
    given; to compare like with like, add `--mnv-pon <install>/MNV_PoN_No_overlap_new.txt` to
-   the new run.
+   the new run. With `-P`, the new version also removes indels at PoN indel positions (D16);
+   add `--pon-indel-match allele` to compare like with like, or leave it out and expect fewer
+   indels in `merged_vcfs.txt` and later files.
 7. Check without running: `bash CircuSNV.sh --dry-run <options of the reference run> -O <work>/new_output`
 8. Run: `sbatch CircuSNV.sh <options of the reference run> -O <work>/new_output`
 9. Follow it with `squeue -u $USER`; when it is gone, read `tail -n 30 CircuSNV.out CircuSNV.err`
