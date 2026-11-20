@@ -76,6 +76,7 @@ Minimum Read Depth: $RDP
 Minimum Base Quality: $Qual
 Minimum Overlapping Calls: $Calls
 PoN: $PoN
+PoN indel matching: $PON_INDEL_MATCH
 Strand Bias: $SB
 MultiNucleotide Variant Calling: $MNV
 Bayesian Prior for MNV calling: $PRIOR
